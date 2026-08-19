@@ -8,8 +8,11 @@ import os
 from http.server import BaseHTTPRequestHandler
 import urllib.parse
 import joblib
-import pandas as pd
 import numpy as np
+import warnings
+
+# Suppress scikit-learn warnings about missing feature names (since we use numpy arrays instead of pandas to save Vercel bundle size)
+warnings.filterwarnings("ignore", category=UserWarning)
 
 # Load model artifacts
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "best_phishing_model.pkl")
@@ -42,15 +45,16 @@ FEATURE_COLUMNS = [
 ]
 
 def predict_from_dict(data):
-    mdl, _ = get_model()
+    mdl, scl = get_model()
     if mdl is None:
         return {"error": "Model artifact not loaded"}, 500
 
-    row = {}
+    row = []
     for feat in FEATURE_COLUMNS:
-        row[feat] = float(data.get(feat, 0.0))
+        row.append(float(data.get(feat, 0.0)))
 
-    df_in = pd.DataFrame([row])[FEATURE_COLUMNS]
+    # Use a 2D numpy array instead of pandas DataFrame to save Vercel bundle size
+    df_in = np.array([row])
     pred = int(mdl.predict(df_in)[0])
     proba = None
     if hasattr(mdl, "predict_proba"):
