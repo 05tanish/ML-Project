@@ -66,6 +66,8 @@ $RECYCLE.BIN/
 
 # --- ML / Data ---
 *.pkl
+!best_phishing_model.pkl
+!phishing_scaler.pkl
 *.pickle
 *.joblib
 *.h5
@@ -110,7 +112,11 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
+appcopy.py
+pdf_structure.json
+phishing_detector_app.py
 
+other
 # --- OS generated ---
 *.bak
 *.tmp

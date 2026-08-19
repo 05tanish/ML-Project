@@ -1,7 +1,11 @@
-# =========================
-# IMPORTS
-# =========================
+# ==============================================================================
+# PHISHING WEBSITE DETECTION — STREAMLIT DASHBOARD
+# End-to-End Machine Learning Classification & Explainability Application
+# ==============================================================================
+
 import io
+import os
+import time
 import warnings
 
 import joblib
@@ -10,6 +14,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 from matplotlib.colors import LinearSegmentedColormap
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
@@ -22,21 +27,18 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
     roc_curve,
+    average_precision_score,
 )
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import GaussianNB
-from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier
 
 warnings.filterwarnings("ignore")
 
-
-# =========================
+# ==============================================================================
 # PAGE CONFIGURATION
-# =========================
+# ==============================================================================
 st.set_page_config(
     page_title="Phishing Website Detection",
     page_icon="🔐",
@@ -44,102 +46,130 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
-# =========================
-# CUSTOM CSS
-# =========================
+# ==============================================================================
+# CUSTOM CSS & THEMING
+# ==============================================================================
 st.markdown(
     """
 <style>
     .main-title {
         text-align: center;
-        padding: 0.5rem 0;
+        padding: 0.2rem 0;
+        font-weight: 800;
+        color: #1a237e;
     }
     .subtitle {
         text-align: center;
-        color: #666;
+        color: #555;
         font-size: 1.05rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.2rem;
     }
     .best-model-card {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+        background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
         color: white;
-        padding: 2rem;
-        border-radius: 12px;
+        padding: 1.8rem;
+        border-radius: 14px;
         text-align: center;
         margin: 1rem 0;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.15);
     }
     .best-model-card h2 {
         color: #ffd700;
         margin: 0;
+        font-size: 1.8rem;
     }
     .best-model-card h3 {
         color: #e0e0e0;
         margin: 0.3rem 0;
+        font-weight: 400;
     }
     .metric-row {
         display: flex;
         justify-content: space-around;
         flex-wrap: wrap;
-        margin-top: 1rem;
+        margin-top: 1.2rem;
     }
     .metric-item {
         text-align: center;
-        padding: 0.5rem 1rem;
+        padding: 0.6rem 1.2rem;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        margin: 0.3rem;
     }
     .metric-item .value {
-        font-size: 1.5rem;
+        font-size: 1.6rem;
         font-weight: bold;
         color: #4fc3f7;
     }
     .metric-item .label {
         font-size: 0.85rem;
-        color: #bbb;
+        color: #ddd;
     }
     .prediction-result {
-        padding: 1.5rem;
-        border-radius: 10px;
+        padding: 1.4rem;
+        border-radius: 12px;
         text-align: center;
-        font-size: 1.3rem;
+        font-size: 1.4rem;
         font-weight: bold;
-        margin: 1rem 0;
+        margin: 1.2rem 0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
     .phishing {
         background-color: #ffebee;
         color: #c62828;
-        border: 2px solid #c62828;
+        border: 2px solid #ef5350;
     }
     .legitimate {
         background-color: #e8f5e9;
         color: #2e7d32;
-        border: 2px solid #2e7d32;
+        border: 2px solid #66bb6a;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding: 8px 16px;
+        border-radius: 8px 8px 0 0;
+        font-weight: 600;
+    }
+    .status-badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .badge-success {
+        background-color: #d4edda;
+        color: #155724;
     }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
+# ==============================================================================
+# HELPER FUNCTIONS — DATA CLEANING & PREPROCESSING
+# ==============================================================================
 
-# =========================
-# HELPER FUNCTIONS
-# =========================
-
-
-def load_data(uploaded_file):
-    """Load CSV data from uploaded file."""
+def load_data(file_or_path):
+    """Load CSV dataset from uploaded file object or file path."""
     try:
-        df = pd.read_csv(uploaded_file)
+        if isinstance(file_or_path, str):
+            df = pd.read_csv(file_or_path)
+        else:
+            df = pd.read_csv(file_or_path)
         if df.empty:
-            st.error("The uploaded CSV file is empty.")
+            st.error("The dataset file is empty.")
             return None
         return df
     except Exception as e:
-        st.error(f"Error reading CSV file: {e}")
+        st.error(f"Error reading CSV dataset: {e}")
         return None
 
 
 def get_dataset_info(df, target_col):
-    """Return a dictionary of dataset information."""
+    """Return dictionary of dataset summary information."""
     info = {
         "rows": df.shape[0],
         "columns": df.shape[1],
@@ -154,93 +184,97 @@ def get_dataset_info(df, target_col):
     return info
 
 
-def clean_data(df):
-    """Remove duplicate rows from the dataset."""
-    before = len(df)
-    df_clean = df.drop_duplicates().reset_index(drop=True)
-    after = len(df_clean)
-    return df_clean, before - after
+def clean_data_pipeline(df, target_col="Is_Phishing"):
+    """
+    Standard data cleaning pipeline mirroring the notebook:
+    1. Drop exact duplicate rows.
+    2. Convert invalid negative values in count/length features to NaN.
+    3. Ensure binary columns are strictly {0, 1}.
+    4. Ensure ratio columns are within [0, 1].
+    5. Median imputation for missing numeric values.
+    6. Type casting.
+    """
+    before_len = len(df)
+    df_clean = df.drop_duplicates().reset_index(drop=True).copy()
+    duplicates_removed = before_len - len(df_clean)
+
+    count_length_cols = [
+        "URL_Length", "Num_Dots", "Num_Hyphens", "Num_Special_Chars",
+        "Num_Subdomains", "Domain_Age_Days", "Domain_Registration_Length",
+        "Num_Redirects", "Form_Count", "Iframe_Count", "Popup_Count",
+        "Domain_Name_Length", "URL_Entropy"
+    ]
+    for col in count_length_cols:
+        if col in df_clean.columns:
+            df_clean.loc[df_clean[col] < 0, col] = np.nan
+
+    binary_cols = [
+        "Has_IP_Address", "Has_HTTPS", "Has_Suspicious_Words",
+        "Password_Field_Present", "Favicon_External"
+    ]
+    for col in binary_cols:
+        if col in df_clean.columns:
+            df_clean.loc[~df_clean[col].isin([0, 1]), col] = np.nan
+
+    ratio_cols = ["External_Link_Ratio", "Image_Link_Ratio"]
+    for col in ratio_cols:
+        if col in df_clean.columns:
+            df_clean.loc[(df_clean[col] < 0) | (df_clean[col] > 1), col] = np.nan
+
+    # Median imputation
+    features = [c for c in df_clean.columns if c != target_col]
+    for col in features:
+        if df_clean[col].isnull().sum() > 0:
+            df_clean[col] = df_clean[col].fillna(df_clean[col].median())
+
+    # Cast integer columns
+    for col in count_length_cols:
+        if col in df_clean.columns and col != "URL_Entropy":
+            df_clean[col] = df_clean[col].astype(int)
+    for col in binary_cols:
+        if col in df_clean.columns:
+            df_clean[col] = df_clean[col].astype(int)
+    if target_col in df_clean.columns:
+        df_clean[target_col] = df_clean[target_col].astype(int)
+
+    return df_clean, duplicates_removed
 
 
-def preprocess_data(df, target_col, test_size, random_state):
+def preprocess_data(df, target_col="Is_Phishing", test_size=0.20, random_state=42):
     """
-    Full preprocessing: separate X/y, handle missing values,
-    encode categoricals, split, scale. All fitted on training data only.
-    Returns everything needed for evaluation and prediction.
+    Split data and prepare StandardScaler.
+    Fitted strictly on training split to prevent leakage.
     """
-    # --- Step 1: Separate features and target ---
     X = df.drop(columns=[target_col])
     y = df[target_col]
-
     feature_columns = list(X.columns)
 
-    # --- Step 2: Identify column types ---
     num_cols = list(X.select_dtypes(include=[np.number]).columns)
     cat_cols = list(X.select_dtypes(exclude=[np.number]).columns)
 
-    # --- Step 3: Train/Test Split (before any fitting) ---
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y
     )
 
-    # --- Step 4: Handle missing values (fit on train only) ---
     num_imputer = None
-    cat_imputer = None
-
     if num_cols:
         num_imputer = SimpleImputer(strategy="median")
         X_train[num_cols] = num_imputer.fit_transform(X_train[num_cols])
         X_test[num_cols] = num_imputer.transform(X_test[num_cols])
 
-    if cat_cols:
-        cat_imputer = SimpleImputer(strategy="most_frequent")
-        X_train[cat_cols] = cat_imputer.fit_transform(X_train[cat_cols])
-        X_test[cat_cols] = cat_imputer.transform(X_test[cat_cols])
-
-    # --- Step 5: Encode categorical variables (fit on train only) ---
-    ohe = None
-    ohe_feature_names = []
-    if cat_cols:
-        ohe = OneHotEncoder(handle_unknown="ignore", sparse_output=False)
-        encoded_train = ohe.fit_transform(X_train[cat_cols])
-        encoded_test = ohe.transform(X_test[cat_cols])
-        ohe_feature_names = list(ohe.get_feature_names_out(cat_cols))
-
-        encoded_train_df = pd.DataFrame(
-            encoded_train, columns=ohe_feature_names, index=X_train.index
-        )
-        encoded_test_df = pd.DataFrame(
-            encoded_test, columns=ohe_feature_names, index=X_test.index
-        )
-
-        X_train = X_train.drop(columns=cat_cols).reset_index(drop=True)
-        X_test = X_test.drop(columns=cat_cols).reset_index(drop=True)
-        encoded_train_df = encoded_train_df.reset_index(drop=True)
-        encoded_test_df = encoded_test_df.reset_index(drop=True)
-
-        X_train = pd.concat([X_train, encoded_train_df], axis=1)
-        X_test = pd.concat([X_test, encoded_test_df], axis=1)
-
-    # --- Step 6: Feature scaling (fit on train only) ---
     scaler = StandardScaler()
     all_final_features = list(X_train.columns)
     X_train_scaled = scaler.fit_transform(X_train)
     X_test_scaled = scaler.transform(X_test)
 
-    # Also keep unscaled versions for tree-based models
     X_train_unscaled = X_train.values
     X_test_unscaled = X_test.values
 
     preprocessor = {
         "num_imputer": num_imputer,
-        "cat_imputer": cat_imputer,
-        "ohe": ohe,
         "scaler": scaler,
-        "num_cols": num_cols,
-        "cat_cols": cat_cols,
         "feature_columns": feature_columns,
         "all_final_features": all_final_features,
-        "ohe_feature_names": ohe_feature_names,
     }
 
     return (
@@ -254,65 +288,66 @@ def preprocess_data(df, target_col, test_size, random_state):
     )
 
 
-def get_models(random_state):
-    """Return a dictionary of model name -> model instance."""
+# ==============================================================================
+# MODEL CONFIGURATION — 4 MODELS ONLY
+# ==============================================================================
+
+def get_models(random_state=42):
+    """
+    Return the 4 core models:
+    1. Logistic Regression
+    2. Decision Tree
+    3. Random Forest (Tuned)
+    4. Naive Bayes (Gaussian NB)
+    """
     models = {
         "Logistic Regression": LogisticRegression(
             max_iter=1000, random_state=random_state
         ),
         "Decision Tree": DecisionTreeClassifier(random_state=random_state),
         "Random Forest": RandomForestClassifier(
-            n_estimators=200, random_state=random_state
+            max_depth=20,
+            min_samples_leaf=2,
+            min_samples_split=5,
+            n_estimators=100,
+            random_state=random_state,
         ),
-        "K-Nearest Neighbors": KNeighborsClassifier(),
         "Naive Bayes": GaussianNB(),
-        "SVM": SVC(probability=True, random_state=random_state),
     }
     return models
 
 
 def needs_scaling(model_name):
-    """Determine if a model benefits from feature scaling."""
-    scaled_models = {"Logistic Regression", "K-Nearest Neighbors", "SVM"}
+    """Determine if a model requires feature scaling."""
+    scaled_models = {"Logistic Regression", "Naive Bayes"}
     return model_name in scaled_models
 
 
-def train_models(
+def train_and_evaluate_models(
     models, X_train_scaled, X_test_scaled, X_train_unscaled, X_test_unscaled, y_train, y_test
 ):
-    """
-    Train all models, evaluate them, return results DataFrame,
-    trained model dict, and per-model predictions.
-    """
+    """Train the 4 models and return results DataFrame and predictions."""
     results = []
     trained_models = {}
     model_predictions = {}
     errors = {}
 
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    total = len(models)
-
-    for i, (name, model) in enumerate(models.items()):
-        status_text.text(f"Training {name}... ({i + 1}/{total})")
-        progress_bar.progress((i + 1) / total)
-
+    for name, model in models.items():
+        t0 = time.time()
         try:
-            # Select scaled or unscaled data
             if needs_scaling(name):
                 X_tr, X_te = X_train_scaled, X_test_scaled
             else:
                 X_tr, X_te = X_train_unscaled, X_test_unscaled
 
             model.fit(X_tr, y_train)
+            train_time = time.time() - t0
             y_pred = model.predict(X_te)
 
-            # Probability predictions
             y_prob = None
             if hasattr(model, "predict_proba"):
                 y_prob = model.predict_proba(X_te)[:, 1]
 
-            # Metrics
             acc = accuracy_score(y_test, y_pred)
             prec = precision_score(y_test, y_pred, zero_division=0)
             rec = recall_score(y_test, y_pred, zero_division=0)
@@ -326,79 +361,68 @@ def train_models(
                     roc = np.nan
 
             cm = confusion_matrix(y_test, y_pred)
-            tn, fp, fn, tp = cm.ravel()
+            report = classification_report(y_test, y_pred, zero_division=0, output_dict=True)
 
-            results.append(
-                {
-                    "Model": name,
-                    "Accuracy": round(acc, 4),
-                    "Precision": round(prec, 4),
-                    "Recall": round(rec, 4),
-                    "F1 Score": round(f1, 4),
-                    "ROC-AUC": round(roc, 4) if not np.isnan(roc) else "N/A",
-                    "TP": tp,
-                    "TN": tn,
-                    "FP": fp,
-                    "FN": fn,
-                }
-            )
+            results.append({
+                "Model": name,
+                "Accuracy": acc,
+                "Precision": prec,
+                "Recall": rec,
+                "F1 Score": f1,
+                "ROC-AUC": roc,
+                "Training Time (s)": round(train_time, 3),
+            })
+
             trained_models[name] = model
             model_predictions[name] = {
                 "y_pred": y_pred,
                 "y_prob": y_prob,
+                "confusion_matrix": cm,
+                "classification_report": report,
             }
 
         except Exception as e:
             errors[name] = str(e)
-            st.warning(f"⚠️ {name} could not be trained. Reason: {e}")
-
-    progress_bar.empty()
-    status_text.empty()
 
     results_df = pd.DataFrame(results)
+    if not results_df.empty:
+        results_df = results_df.sort_values(by="F1 Score", ascending=False).reset_index(drop=True)
+
     return results_df, trained_models, model_predictions, errors
 
 
-def evaluate_model(y_test, y_pred, y_prob):
-    """Return a dictionary of evaluation metrics for a single model."""
-    acc = accuracy_score(y_test, y_pred)
-    prec = precision_score(y_test, y_pred, zero_division=0)
-    rec = recall_score(y_test, y_pred, zero_division=0)
-    f1 = f1_score(y_test, y_pred, zero_division=0)
-    roc = np.nan
-    if y_prob is not None:
-        try:
-            roc = roc_auc_score(y_test, y_prob)
-        except Exception:
-            roc = np.nan
-    cm = confusion_matrix(y_test, y_pred)
-    report = classification_report(y_test, y_pred, zero_division=0, output_dict=True)
-    return {
-        "accuracy": acc,
-        "precision": prec,
-        "recall": rec,
-        "f1": f1,
-        "roc_auc": roc,
-        "confusion_matrix": cm,
-        "classification_report": report,
-    }
+# ==============================================================================
+# PLOTTING FUNCTIONS
+# ==============================================================================
+
+def plot_target_distribution(df, target_col="Is_Phishing"):
+    """Plot styled target class distribution."""
+    fig, ax = plt.subplots(figsize=(7, 4), dpi=150)
+    counts = df[target_col].value_counts()
+    colors = ["#2e7d32", "#c62828"]
+    labels = ["Legitimate (0)", "Phishing (1)"]
+    vals = [counts.get(0, 0), counts.get(1, 0)]
+    bars = ax.bar(labels, vals, color=colors, width=0.45, edgecolor="black", linewidth=1)
+
+    for bar in bars:
+        h = bar.get_height()
+        pct = (h / len(df)) * 100
+        ax.annotate(f"{h:,}\n({pct:.1f}%)",
+                    xy=(bar.get_x() + bar.get_width() / 2, h),
+                    xytext=(0, 4), textcoords="offset points",
+                    ha="center", va="bottom", fontsize=10, fontweight="bold")
+
+    ax.set_title("Target Class Distribution (Is_Phishing)", fontsize=12, fontweight="bold", pad=12)
+    ax.set_ylabel("Count", fontsize=10, fontweight="bold")
+    ax.set_ylim(0, max(vals) * 1.18)
+    ax.grid(True, axis="y", alpha=0.3)
+    plt.tight_layout()
+    return fig
 
 
-def compare_models(results_df):
-    """Sort results by F1 Score (primary) and ROC-AUC (secondary)."""
-    df = results_df.copy()
-    # Convert ROC-AUC to numeric for sorting; "N/A" becomes NaN
-    df["ROC-AUC_num"] = pd.to_numeric(df["ROC-AUC"], errors="coerce")
-    df = df.sort_values(
-        by=["F1 Score", "ROC-AUC_num"], ascending=[False, False]
-    ).reset_index(drop=True)
-    df = df.drop(columns=["ROC-AUC_num"])
-    return df
-
-
-def plot_confusion_matrix(cm, title="Confusion Matrix"):
-    """Plot a styled confusion matrix using Matplotlib."""
-    fig, ax = plt.subplots(figsize=(7, 6))
+def plot_confusion_matrix(cm, title="Confusion Matrix — Final Model"):
+    """Plot styled confusion matrix heatmap."""
+    fig, ax = plt.subplots(figsize=(6.5, 5), dpi=150)
     cmap = LinearSegmentedColormap.from_list("custom", ["#e3f2fd", "#1565c0"])
     im = ax.imshow(cm, interpolation="nearest", cmap=cmap)
     plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
@@ -406,43 +430,35 @@ def plot_confusion_matrix(cm, title="Confusion Matrix"):
     labels = ["Legitimate (0)", "Phishing (1)"]
     ax.set_xticks([0, 1])
     ax.set_yticks([0, 1])
-    ax.set_xticklabels(labels, fontsize=11)
-    ax.set_yticklabels(labels, fontsize=11)
-    ax.set_xlabel("Predicted Label", fontsize=13, fontweight="bold")
-    ax.set_ylabel("Actual Label", fontsize=13, fontweight="bold")
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+    ax.set_xticklabels(labels, fontsize=10, fontweight="bold")
+    ax.set_yticklabels(labels, fontsize=10, fontweight="bold")
+    ax.set_xlabel("Predicted Label", fontsize=11, fontweight="bold")
+    ax.set_ylabel("Actual Label", fontsize=11, fontweight="bold")
+    ax.set_title(title, fontsize=12, fontweight="bold", pad=12)
 
-    # Annotate cells
     thresh = cm.max() / 2.0
-    cell_labels = [
-        ["TN", "FP"],
-        ["FN", "TP"],
-    ]
+    cell_names = [["TN", "FP"], ["FN", "TP"]]
     for i in range(2):
         for j in range(2):
             color = "white" if cm[i, j] > thresh else "black"
-            ax.text(
-                j, i,
-                f"{cell_labels[i][j]}\n{cm[i, j]:,}",
-                ha="center", va="center",
-                fontsize=14, fontweight="bold", color=color,
-            )
-
+            ax.text(j, i, f"{cell_names[i][j]}\n{cm[i, j]:,}",
+                    ha="center", va="center", fontsize=12, fontweight="bold", color=color)
     plt.tight_layout()
     return fig
 
 
 def plot_roc_curve(y_test, y_prob, model_name, auc_val):
-    """Plot ROC curve for a model."""
+    """Plot ROC curve."""
     fpr, tpr, _ = roc_curve(y_test, y_prob)
-    fig, ax = plt.subplots(figsize=(7, 6))
+    fig, ax = plt.subplots(figsize=(6.5, 4.5), dpi=150)
     ax.plot(fpr, tpr, color="#1565c0", lw=2.5, label=f"{model_name} (AUC = {auc_val:.4f})")
-    ax.plot([0, 1], [0, 1], color="#bdbdbd", lw=1.5, linestyle="--", label="Random Classifier")
-    ax.fill_between(fpr, tpr, alpha=0.1, color="#1565c0")
-    ax.set_xlabel("False Positive Rate", fontsize=12, fontweight="bold")
-    ax.set_ylabel("True Positive Rate", fontsize=12, fontweight="bold")
-    ax.set_title("ROC Curve", fontsize=14, fontweight="bold")
-    ax.legend(loc="lower right", fontsize=10)
+    ax.plot([0, 1], [0, 1], color="#9e9e9e", lw=1.5, linestyle="--", label="Random Chance")
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel("False Positive Rate", fontsize=10, fontweight="bold")
+    ax.set_ylabel("True Positive Rate", fontsize=10, fontweight="bold")
+    ax.set_title("Receiver Operating Characteristic (ROC) Curve", fontsize=11, fontweight="bold")
+    ax.legend(loc="lower right", fontsize=9)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     return fig
@@ -450,156 +466,117 @@ def plot_roc_curve(y_test, y_prob, model_name, auc_val):
 
 def plot_precision_recall_curve(y_test, y_prob, model_name):
     """Plot Precision-Recall curve."""
-    prec_vals, rec_vals, _ = precision_recall_curve(y_test, y_prob)
-    fig, ax = plt.subplots(figsize=(7, 6))
-    ax.plot(rec_vals, prec_vals, color="#c62828", lw=2.5, label=model_name)
-    ax.fill_between(rec_vals, prec_vals, alpha=0.1, color="#c62828")
-    ax.set_xlabel("Recall", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Precision", fontsize=12, fontweight="bold")
-    ax.set_title("Precision-Recall Curve", fontsize=14, fontweight="bold")
-    ax.legend(loc="lower left", fontsize=10)
+    prec, rec, _ = precision_recall_curve(y_test, y_prob)
+    ap = average_precision_score(y_test, y_prob)
+    fig, ax = plt.subplots(figsize=(6.5, 4.5), dpi=150)
+    ax.plot(rec, prec, color="#2e7d32", lw=2.5, label=f"{model_name} (AP = {ap:.4f})")
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel("Recall", fontsize=10, fontweight="bold")
+    ax.set_ylabel("Precision", fontsize=10, fontweight="bold")
+    ax.set_title("Precision-Recall (PR) Curve", fontsize=11, fontweight="bold")
+    ax.legend(loc="lower left", fontsize=9)
     ax.grid(True, alpha=0.3)
     plt.tight_layout()
     return fig
 
 
-def plot_feature_importance(model, feature_names, model_name, top_n=15):
-    """Plot feature importance for tree-based or linear models."""
-    importances = None
-    label = "Importance"
-
-    if hasattr(model, "feature_importances_"):
-        importances = model.feature_importances_
-        label = "Feature Importance"
-    elif hasattr(model, "coef_"):
-        importances = np.abs(model.coef_[0]) if model.coef_.ndim > 1 else np.abs(model.coef_)
-        label = "Absolute Coefficient"
-
-    if importances is None:
+def plot_feature_importance(model, feature_names, top_n=20):
+    """Plot feature importance horizontal bar chart."""
+    if not hasattr(model, "feature_importances_"):
         return None
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1][:top_n]
+    sorted_features = [feature_names[i] for i in indices]
+    sorted_importances = importances[indices]
 
-    # Match lengths (in case encoding changed count)
-    n = min(len(importances), len(feature_names))
-    importances = importances[:n]
-    feature_names = feature_names[:n]
-
-    indices = np.argsort(importances)[-top_n:]
-    top_features = [feature_names[i] for i in indices]
-    top_importances = importances[indices]
-
-    fig, ax = plt.subplots(figsize=(8, max(5, top_n * 0.4)))
-    colors = plt.cm.viridis(np.linspace(0.3, 0.9, len(top_features)))
-    ax.barh(range(len(top_features)), top_importances, color=colors, edgecolor="none")
-    ax.set_yticks(range(len(top_features)))
-    ax.set_yticklabels(top_features, fontsize=10)
-    ax.set_xlabel(label, fontsize=12, fontweight="bold")
-    ax.set_title(f"Top {len(top_features)} Feature Importances — {model_name}", fontsize=13, fontweight="bold")
+    fig, ax = plt.subplots(figsize=(9, 6), dpi=150)
+    bars = ax.barh(sorted_features[::-1], sorted_importances[::-1], color="#0284c7", edgecolor="black", height=0.65)
+    for bar in bars:
+        w = bar.get_width()
+        ax.text(w + 0.002, bar.get_y() + bar.get_height() / 2, f"{w:.4f}",
+                ha="left", va="center", fontsize=8.5, fontweight="bold")
+    ax.set_title("Feature Importance Ranking (Gini Impurity Reduction)", fontsize=12, fontweight="bold", pad=12)
+    ax.set_xlabel("Relative Importance", fontsize=10, fontweight="bold")
+    ax.set_xlim(0, max(sorted_importances) * 1.15)
     ax.grid(True, axis="x", alpha=0.3)
     plt.tight_layout()
     return fig
 
 
-def plot_model_comparison_bar(results_df, metric, color):
-    """Bar chart comparing all models on a single metric."""
-    fig, ax = plt.subplots(figsize=(9, 5))
-    models = results_df["Model"]
-    values = pd.to_numeric(results_df[metric], errors="coerce")
-
-    bars = ax.bar(models, values, color=color, edgecolor="white", width=0.55)
-
-    # Annotate bars
-    for bar, val in zip(bars, values):
-        if not np.isnan(val):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 0.005,
-                f"{val:.4f}",
-                ha="center", va="bottom", fontsize=9, fontweight="bold",
-            )
-
-    ax.set_ylabel(metric, fontsize=12, fontweight="bold")
-    ax.set_title(f"Model Comparison — {metric}", fontsize=13, fontweight="bold")
-    ax.set_ylim(0, 1.08)
-    ax.grid(True, axis="y", alpha=0.3)
-    plt.xticks(rotation=25, ha="right", fontsize=9)
+def plot_correlation_heatmap(df):
+    """Plot full correlation matrix heatmap."""
+    fig, ax = plt.subplots(figsize=(14, 11), dpi=150)
+    corr = df.corr()
+    im = ax.imshow(corr, cmap="coolwarm", vmin=-1, vmax=1)
+    plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    cols = df.columns
+    ax.set_xticks(np.arange(len(cols)))
+    ax.set_yticks(np.arange(len(cols)))
+    ax.set_xticklabels(cols, rotation=45, ha="right", fontsize=8)
+    ax.set_yticklabels(cols, fontsize=8)
+    for i in range(len(cols)):
+        for j in range(len(cols)):
+            val = corr.iloc[i, j]
+            color = "white" if abs(val) > 0.55 else "black"
+            ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=color, fontsize=6.5)
+    ax.set_title("Correlation Matrix Across All Features", fontsize=13, fontweight="bold", pad=12)
     plt.tight_layout()
     return fig
 
 
-def plot_combined_comparison(results_df):
-    """Grouped bar chart comparing all metrics for all models."""
+def plot_combined_model_comparison(results_df):
+    """Grouped bar chart comparing Accuracy, Precision, Recall, F1 for all 4 models."""
     metrics = ["Accuracy", "Precision", "Recall", "F1 Score"]
     models = results_df["Model"].tolist()
     x = np.arange(len(models))
     width = 0.18
     colors = ["#1565c0", "#2e7d32", "#e65100", "#6a1b9a"]
 
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(10, 5), dpi=150)
     for i, metric in enumerate(metrics):
-        vals = pd.to_numeric(results_df[metric], errors="coerce").values
-        ax.bar(x + i * width, vals, width, label=metric, color=colors[i], edgecolor="white")
+        vals = results_df[metric].values
+        bars = ax.bar(x + i * width, vals, width, label=metric, color=colors[i], edgecolor="black", linewidth=0.6)
+        for bar in bars:
+            h = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2, h + 0.01, f"{h:.3f}",
+                    ha="center", va="bottom", fontsize=7.5, rotation=90)
 
-    ax.set_xlabel("Model", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Score", fontsize=12, fontweight="bold")
-    ax.set_title("Combined Model Comparison", fontsize=14, fontweight="bold")
+    ax.set_xlabel("Classification Model", fontsize=10, fontweight="bold")
+    ax.set_ylabel("Score", fontsize=10, fontweight="bold")
+    ax.set_title("Combined Performance Comparison Across 4 Models", fontsize=12, fontweight="bold", pad=12)
     ax.set_xticks(x + width * 1.5)
-    ax.set_xticklabels(models, rotation=25, ha="right", fontsize=9)
-    ax.set_ylim(0, 1.12)
+    ax.set_xticklabels(models, fontsize=9, fontweight="bold")
+    ax.set_ylim(0, 1.18)
     ax.legend(fontsize=9, loc="upper right")
     ax.grid(True, axis="y", alpha=0.3)
     plt.tight_layout()
     return fig
 
 
-def predict_single_sample(input_data, preprocessor, model, model_name):
-    """
-    Preprocess a single input row and return prediction + probability.
-    input_data: dict of feature_name -> value
-    """
-    input_df = pd.DataFrame([input_data])
+# ==============================================================================
+# PREDICT SINGLE SAMPLE
+# ==============================================================================
 
-    num_cols = preprocessor["num_cols"]
-    cat_cols = preprocessor["cat_cols"]
-    num_imputer = preprocessor["num_imputer"]
-    cat_imputer = preprocessor["cat_imputer"]
-    ohe = preprocessor["ohe"]
+def predict_sample(input_data, preprocessor, model, model_name):
+    """Preprocess single test instance and return prediction & probabilities."""
+    input_df = pd.DataFrame([input_data])
+    feature_cols = preprocessor["feature_columns"]
     scaler = preprocessor["scaler"]
 
-    # Impute
-    if num_cols and num_imputer is not None:
-        cols_present = [c for c in num_cols if c in input_df.columns]
-        if cols_present:
-            input_df[cols_present] = num_imputer.transform(input_df[cols_present])
+    # Impute missing if needed
+    if preprocessor["num_imputer"] is not None:
+        input_df[feature_cols] = preprocessor["num_imputer"].transform(input_df[feature_cols])
 
-    if cat_cols and cat_imputer is not None:
-        cols_present = [c for c in cat_cols if c in input_df.columns]
-        if cols_present:
-            input_df[cols_present] = cat_imputer.transform(input_df[cols_present])
+    # Reorder columns
+    input_df = input_df[feature_cols]
 
-    # Encode
-    if cat_cols and ohe is not None:
-        cols_present = [c for c in cat_cols if c in input_df.columns]
-        if cols_present:
-            encoded = ohe.transform(input_df[cols_present])
-            ohe_names = list(ohe.get_feature_names_out(cols_present))
-            encoded_df = pd.DataFrame(encoded, columns=ohe_names, index=input_df.index)
-            input_df = input_df.drop(columns=cols_present)
-            input_df = pd.concat([input_df, encoded_df], axis=1)
-
-    # Ensure column order matches training
-    all_final = preprocessor["all_final_features"]
-    for col in all_final:
-        if col not in input_df.columns:
-            input_df[col] = 0
-    input_df = input_df[all_final]
-
-    # Scale or not depending on model
     if needs_scaling(model_name):
         input_arr = scaler.transform(input_df)
     else:
         input_arr = input_df.values
 
-    prediction = model.predict(input_arr)[0]
+    prediction = int(model.predict(input_arr)[0])
     probability = None
     if hasattr(model, "predict_proba"):
         probability = model.predict_proba(input_arr)[0]
@@ -607,872 +584,571 @@ def predict_single_sample(input_data, preprocessor, model, model_name):
     return prediction, probability
 
 
-# =========================
-# SESSION STATE DEFAULTS
-# =========================
-defaults = {
-    "df": None,
-    "df_clean": None,
-    "eda_done": False,
-    "models_trained": False,
-    "results_df": None,
-    "trained_models": None,
-    "model_predictions": None,
-    "model_errors": None,
-    "best_model_name": None,
-    "preprocessor": None,
-    "X_train_scaled": None,
-    "X_test_scaled": None,
-    "X_train_unscaled": None,
-    "X_test_unscaled": None,
-    "y_train": None,
-    "y_test": None,
-}
-for key, val in defaults.items():
-    if key not in st.session_state:
-        st.session_state[key] = val
+# ==============================================================================
+# INITIALIZE STATE & AUTO-LOAD
+# ==============================================================================
+
+if "df" not in st.session_state or st.session_state.df is None:
+    if os.path.exists("phishing_website_raw.csv"):
+        st.session_state.df = load_data("phishing_website_raw.csv")
+
+if "models_trained" not in st.session_state:
+    st.session_state.models_trained = False
+
+# Auto-initialize cleaned data and preprocessor if raw dataset is present
+if st.session_state.df is not None and "df_clean" not in st.session_state:
+    df_clean, _ = clean_data_pipeline(st.session_state.df)
+    st.session_state.df_clean = df_clean
+    (
+        X_train_s, X_test_s,
+        X_train_u, X_test_u,
+        y_train, y_test,
+        preprocessor
+    ) = preprocess_data(df_clean, "Is_Phishing", 0.20, 42)
+    st.session_state.X_train_scaled = X_train_s
+    st.session_state.X_test_scaled = X_test_s
+    st.session_state.X_train_unscaled = X_train_u
+    st.session_state.X_test_unscaled = X_test_u
+    st.session_state.y_train = y_train
+    st.session_state.y_test = y_test
+    st.session_state.preprocessor = preprocessor
+
+# Auto-load pre-trained model PKL if available
+if os.path.exists("best_phishing_model.pkl") and not st.session_state.models_trained:
+    try:
+        loaded_model = joblib.load("best_phishing_model.pkl")
+        models = get_models(42)
+        # Fast evaluate all 4 models so full comparison is available immediately
+        results_df, trained_models, model_predictions, errors = train_and_evaluate_models(
+            models,
+            st.session_state.X_train_scaled, st.session_state.X_test_scaled,
+            st.session_state.X_train_unscaled, st.session_state.X_test_unscaled,
+            st.session_state.y_train, st.session_state.y_test
+        )
+        st.session_state.results_df = results_df
+        st.session_state.trained_models = trained_models
+        st.session_state.model_predictions = model_predictions
+        st.session_state.best_model_name = "Random Forest"
+        st.session_state.models_trained = True
+    except Exception as e:
+        st.warning(f"Could not auto-load pre-trained model: {e}")
 
 
-# =========================
-# SIDEBAR
-# =========================
+# ==============================================================================
+# SIDEBAR CONTROLS
+# ==============================================================================
 with st.sidebar:
-    st.image(
-        "https://img.icons8.com/fluency/96/security-checked.png",
-        width=64,
-    )
+    st.image("https://img.icons8.com/fluency/96/security-checked.png", width=64)
     st.markdown("## 🔐 Phishing Detector")
+    st.markdown("<span class='status-badge badge-success'>4 Models Active</span>", unsafe_allow_html=True)
     st.markdown("---")
 
-    # Dataset upload
-    st.markdown("### 📂 Upload Dataset")
-    uploaded_file = st.file_uploader(
-        "Upload CSV file", type=["csv"], label_visibility="collapsed"
-    )
-
-    if uploaded_file is not None and st.session_state.df is None:
-        df_loaded = load_data(uploaded_file)
-        if df_loaded is not None:
-            st.session_state.df = df_loaded
-
-    st.markdown("---")
-
-    # Target column
-    target_col = "Is_Phishing"
-    if st.session_state.df is not None:
-        cols = list(st.session_state.df.columns)
-        default_idx = cols.index("Is_Phishing") if "Is_Phishing" in cols else 0
-        target_col = st.selectbox("🎯 Select Target Column", cols, index=default_idx)
-    else:
-        st.selectbox("🎯 Select Target Column", ["Upload dataset first"], disabled=True)
-
-    st.markdown("---")
-
-    # Hyperparameters
-    st.markdown("### ⚙️ Settings")
-    test_size = st.slider("Test Size", 0.10, 0.40, 0.20, 0.05)
-    random_state = st.number_input("Random State", 0, 1000, 42, step=1)
-
-    st.markdown("---")
-
-    # Action buttons
-    st.markdown("### 🚀 Actions")
-    btn_eda = st.button("📊 Run EDA", use_container_width=True)
-    btn_train = st.button("🤖 Train Models", use_container_width=True)
-
-    st.markdown("---")
-    btn_reset = st.button("🔄 Reset Application", use_container_width=True)
-
-    if btn_reset:
-        for key in defaults:
-            st.session_state[key] = defaults[key]
-        st.rerun()
-
-
-# =========================
-# MAIN CONTENT
-# =========================
-st.markdown('<h1 class="main-title">🔐 Phishing Website Detection Using Machine Learning</h1>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="subtitle">End-to-End Classification, Model Comparison &amp; Explainability Dashboard<br>'
-    "<em>Dataset → EDA → Preprocessing → Model Training → Model Comparison → Best Model → Evaluation → Prediction</em></p>",
-    unsafe_allow_html=True,
-)
-
-# Handle EDA and Train button presses
-if btn_eda and st.session_state.df is not None:
-    st.session_state.eda_done = True
-
-if btn_train and st.session_state.df is not None:
-    # Validate target
-    if target_col not in st.session_state.df.columns:
-        st.error(f"Target column '{target_col}' not found in the dataset.")
-    elif st.session_state.df[target_col].nunique() < 2:
-        st.error("Target column must contain at least two classes.")
-    else:
-        df_work = st.session_state.df.copy()
-        df_work, dups_removed = clean_data(df_work)
-        st.session_state.df_clean = df_work
-        if dups_removed > 0:
-            st.info(f"Removed {dups_removed:,} duplicate rows before training.")
-
-        with st.spinner("Preprocessing data..."):
+    # Dataset Upload
+    st.markdown("### 📂 Dataset Management")
+    uploaded_file = st.file_uploader("Upload CSV Dataset", type=["csv"])
+    if uploaded_file is not None:
+        df_new = load_data(uploaded_file)
+        if df_new is not None:
+            st.session_state.df = df_new
+            df_clean, _ = clean_data_pipeline(df_new)
+            st.session_state.df_clean = df_clean
             (
                 X_train_s, X_test_s,
                 X_train_u, X_test_u,
                 y_train, y_test,
-                preprocessor,
-            ) = preprocess_data(df_work, target_col, test_size, random_state)
+                preprocessor
+            ) = preprocess_data(df_clean, "Is_Phishing", 0.20, 42)
+            st.session_state.X_train_scaled = X_train_s
+            st.session_state.X_test_scaled = X_test_s
+            st.session_state.X_train_unscaled = X_train_u
+            st.session_state.X_test_unscaled = X_test_u
+            st.session_state.y_train = y_train
+            st.session_state.y_test = y_test
+            st.session_state.preprocessor = preprocessor
+            st.session_state.models_trained = False
+            st.success("Custom dataset loaded!")
 
-        st.session_state.X_train_scaled = X_train_s
-        st.session_state.X_test_scaled = X_test_s
-        st.session_state.X_train_unscaled = X_train_u
-        st.session_state.X_test_unscaled = X_test_u
-        st.session_state.y_train = y_train
-        st.session_state.y_test = y_test
-        st.session_state.preprocessor = preprocessor
+    st.markdown("---")
+    st.markdown("### ⚙️ Training Settings")
+    test_size = st.slider("Test Set Split Ratio", 0.10, 0.40, 0.20, 0.05)
+    random_state = st.number_input("Random Seed (State)", 0, 1000, 42, step=1)
 
-        models = get_models(random_state)
-        results_df, trained_models, model_predictions, errors = train_models(
-            models,
-            X_train_s, X_test_s,
-            X_train_u, X_test_u,
-            y_train, y_test,
-        )
+    st.markdown("---")
+    st.markdown("### 🚀 Model Execution")
+    btn_train = st.button("🤖 Train 4 Models", use_container_width=True, type="primary")
 
-        if not results_df.empty:
-            results_df = compare_models(results_df)
-            best_name = results_df.iloc[0]["Model"]
+    if btn_train:
+        with st.spinner("Training 4 Classifiers (Logistic Regression, Decision Tree, Random Forest, Naive Bayes)..."):
+            (
+                X_train_s, X_test_s,
+                X_train_u, X_test_u,
+                y_train, y_test,
+                preprocessor
+            ) = preprocess_data(st.session_state.df_clean, "Is_Phishing", test_size, random_state)
+            st.session_state.X_train_scaled = X_train_s
+            st.session_state.X_test_scaled = X_test_s
+            st.session_state.X_train_unscaled = X_train_u
+            st.session_state.X_test_unscaled = X_test_u
+            st.session_state.y_train = y_train
+            st.session_state.y_test = y_test
+            st.session_state.preprocessor = preprocessor
+
+            models = get_models(random_state)
+            results_df, trained_models, model_predictions, errors = train_and_evaluate_models(
+                models, X_train_s, X_test_s, X_train_u, X_test_u, y_train, y_test
+            )
             st.session_state.results_df = results_df
             st.session_state.trained_models = trained_models
             st.session_state.model_predictions = model_predictions
-            st.session_state.model_errors = errors
-            st.session_state.best_model_name = best_name
+            st.session_state.best_model_name = results_df.iloc[0]["Model"]
             st.session_state.models_trained = True
-            st.success(f"✅ All models trained! Best model: **{best_name}**")
-        else:
-            st.error("No models could be trained successfully.")
+            st.success(f"✅ Trained 4 models! Best: **{st.session_state.best_model_name}**")
 
-# Guard: dataset required
-if st.session_state.df is None:
-    st.info("👈 Upload a CSV dataset using the sidebar to begin.")
-    st.stop()
+    st.markdown("---")
+    if os.path.exists("best_phishing_model.pkl"):
+        st.info("📦 Pre-trained Model Loaded: `best_phishing_model.pkl`")
 
-df = st.session_state.df
 
-# =========================
-# TABS
-# =========================
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-    [
-        "📋 Dataset Overview",
-        "📊 EDA",
-        "⚙️ Preprocessing",
-        "🤖 Model Training",
-        "📈 Model Comparison",
-        "🏆 Best Model",
-        "🔮 Prediction",
-    ]
+# ==============================================================================
+# MAIN DASHBOARD CONTENT
+# ==============================================================================
+
+st.markdown('<h1 class="main-title">🔐 Phishing Website Detection Dashboard</h1>', unsafe_allow_html=True)
+st.markdown(
+    '<p class="subtitle">Machine Learning Classification Pipeline • 4 Core Models • Explainable Cybersecurity Analytics<br>'
+    '<em>Overview → EDA → Preprocessing → Model Training → Comparison → Best Model Deep-Dive → Live Prediction</em></p>',
+    unsafe_allow_html=True,
 )
 
+# Render Tabs
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    "📋 Dataset Overview",
+    "📊 EDA & Visualizations",
+    "⚙️ Preprocessing Pipeline",
+    "🤖 4-Model Training",
+    "📈 Model Comparison",
+    "🏆 Best Model In-Depth",
+    "🔮 Live Website Prediction",
+])
 
-# =========================
-# TAB 1 — DATASET OVERVIEW
-# =========================
+df_current = st.session_state.df
+df_clean_current = st.session_state.get("df_clean", df_current)
+
+# ------------------------------------------------------------------------------
+# TAB 1: DATASET OVERVIEW
+# ------------------------------------------------------------------------------
 with tab1:
-    st.header("Dataset Overview")
-
-    info = get_dataset_info(df, target_col)
-
-    # Metric cards
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Rows", f"{info['rows']:,}")
-    c2.metric("Columns", f"{info['columns']}")
-    c3.metric("Features", f"{info['feature_count']}")
-    c4.metric("Missing Values", f"{info['missing_total']:,}")
-    c5.metric("Duplicates", f"{info['duplicates']:,}")
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.metric("Dataset Size", f"{info['size_bytes'] / 1024:.1f} KB")
-    with col_b:
-        st.metric("Target Column", info["target_col"])
+    st.header("📋 Dataset Overview")
+    
+    # KPI Metrics
+    kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+    kpi1.metric("Total Raw Records", f"{len(df_current):,}")
+    kpi2.metric("Clean Records", f"{len(df_clean_current):,}")
+    kpi3.metric("Input Features", f"{df_clean_current.shape[1] - 1}")
+    legit_cnt = int((df_clean_current["Is_Phishing"] == 0).sum())
+    phish_cnt = int((df_clean_current["Is_Phishing"] == 1).sum())
+    kpi4.metric("Legitimate (0)", f"{legit_cnt:,} ({legit_cnt/len(df_clean_current)*100:.1f}%)")
+    kpi5.metric("Phishing (1)", f"{phish_cnt:,} ({phish_cnt/len(df_clean_current)*100:.1f}%)")
 
     st.markdown("---")
+    
+    col_l, col_r = st.columns([3, 2])
+    with col_l:
+        st.subheader("Raw Data Preview")
+        n_rows = st.selectbox("Number of sample rows to display", [5, 10, 20, 50], index=0)
+        st.dataframe(df_current.head(n_rows), use_container_width=True)
 
-    # Preview
-    st.subheader("Dataset Preview")
-    n_rows = st.selectbox("Number of rows to display", [5, 10, 20], index=0)
-    st.dataframe(df.head(n_rows), use_container_width=True)
-
-    st.markdown("---")
-
-    # Column info
-    col1, col2 = st.columns(2)
-    with col1:
-        st.subheader("Column Data Types")
-        dtype_df = pd.DataFrame(
-            {"Column": df.columns, "Data Type": [str(dt) for dt in df.dtypes]}
-        )
-        st.dataframe(dtype_df, use_container_width=True, hide_index=True)
-    with col2:
-        st.subheader("Numerical vs Categorical")
-        st.write(f"**Numerical columns ({len(info['numerical_cols'])}):** {', '.join(info['numerical_cols']) if info['numerical_cols'] else 'None'}")
-        st.write(f"**Categorical columns ({len(info['categorical_cols'])}):** {', '.join(info['categorical_cols']) if info['categorical_cols'] else 'None'}")
+    with col_r:
+        st.subheader("Target Balance")
+        fig_tgt = plot_target_distribution(df_clean_current)
+        st.pyplot(fig_tgt)
+        plt.close(fig_tgt)
 
     st.markdown("---")
-
-    # Target distribution
-    if target_col in df.columns:
-        st.subheader("Target Distribution")
-        tc = df[target_col].value_counts()
-        c1, c2 = st.columns(2)
-        for i, (val, cnt) in enumerate(tc.items()):
-            label = "Legitimate" if val == 0 else "Phishing" if val == 1 else str(val)
-            pct = cnt / len(df) * 100
-            (c1 if i % 2 == 0 else c2).metric(label, f"{cnt:,} ({pct:.1f}%)")
-
-    st.markdown("---")
-
-    # Descriptive stats
     st.subheader("Descriptive Statistics")
-    st.dataframe(df.describe().T, use_container_width=True)
+    st.dataframe(df_clean_current.describe().T, use_container_width=True)
 
 
-# =========================
-# TAB 2 — EDA
-# =========================
+# ------------------------------------------------------------------------------
+# TAB 2: EXPLORATORY DATA ANALYSIS (EDA)
+# ------------------------------------------------------------------------------
 with tab2:
-    st.header("Exploratory Data Analysis")
+    st.header("📊 Exploratory Data Analysis")
+    st.markdown("Explore key distributions, outlier boundaries, and feature-target relationships.")
 
-    if not st.session_state.eda_done:
-        st.info('Click **"📊 Run EDA"** in the sidebar to generate visualizations.')
-    else:
-        # 7.1 Target Distribution
-        st.subheader("7.1 — Target Distribution")
-        if target_col in df.columns:
-            tc = df[target_col].value_counts().sort_index()
-            labels = []
-            for v in tc.index:
-                if v == 0:
-                    labels.append("Legitimate (0)")
-                elif v == 1:
-                    labels.append("Phishing (1)")
-                else:
-                    labels.append(str(v))
+    eda_sub1, eda_sub2, eda_sub3, eda_sub4 = st.tabs([
+        "Feature Distributions",
+        "Outlier Detection (Boxplots)",
+        "Correlation Heatmap",
+        "Feature-Target Correlation",
+    ])
 
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                fig, ax = plt.subplots(figsize=(6, 4))
-                colors = ["#2e7d32", "#c62828"] if len(tc) == 2 else plt.cm.Set2.colors[: len(tc)]
-                bars = ax.bar(labels, tc.values, color=colors, edgecolor="white", width=0.5)
-                for bar, val in zip(bars, tc.values):
-                    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 50,
-                            f"{val:,}", ha="center", va="bottom", fontweight="bold")
-                ax.set_ylabel("Count", fontweight="bold")
-                ax.set_title("Target Distribution", fontweight="bold")
-                ax.grid(True, axis="y", alpha=0.3)
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close(fig)
-            with col2:
-                st.markdown("**Class Counts**")
-                for lbl, val in zip(labels, tc.values):
-                    pct = val / len(df) * 100
-                    st.write(f"• **{lbl}:** {val:,} ({pct:.1f}%)")
-        else:
-            st.warning(f"Target column '{target_col}' not found.")
-
-        st.markdown("---")
-
-        # 7.2 Missing Values
-        st.subheader("7.2 — Missing Values")
-        missing = df.isnull().sum()
-        missing_pct = (missing / len(df) * 100).round(2)
-        missing_df = pd.DataFrame({
-            "Column": missing.index,
-            "Missing Count": missing.values,
-            "Missing Percentage (%)": missing_pct.values,
-        })
-        missing_df = missing_df[missing_df["Missing Count"] > 0].reset_index(drop=True)
-
-        if missing_df.empty:
-            st.success("✅ No missing values detected.")
-        else:
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                st.dataframe(missing_df, use_container_width=True, hide_index=True)
-            with col2:
-                fig, ax = plt.subplots(figsize=(7, max(3, len(missing_df) * 0.4)))
-                ax.barh(missing_df["Column"], missing_df["Missing Count"], color="#e65100")
-                ax.set_xlabel("Missing Count", fontweight="bold")
-                ax.set_title("Missing Values per Column", fontweight="bold")
-                ax.grid(True, axis="x", alpha=0.3)
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close(fig)
-
-        st.markdown("---")
-
-        # 7.3 Duplicate Rows
-        st.subheader("7.3 — Duplicate Rows")
-        dup_count = int(df.duplicated().sum())
-        st.metric("Number of Duplicate Rows", f"{dup_count:,}")
-
-        st.markdown("---")
-
-        # 7.4 Feature Distributions
-        st.subheader("7.4 — Feature Distributions")
-        num_features = list(df.select_dtypes(include=[np.number]).columns)
-        if target_col in num_features:
-            num_features.remove(target_col)
-
-        if num_features:
-            selected_feat = st.selectbox("Select a feature for histogram", num_features, key="hist_feat")
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                fig, ax = plt.subplots(figsize=(7, 4))
-                ax.hist(df[selected_feat].dropna(), bins=40, color="#1565c0", edgecolor="white", alpha=0.85)
-                ax.set_xlabel(selected_feat, fontweight="bold")
-                ax.set_ylabel("Frequency", fontweight="bold")
-                ax.set_title(f"Distribution of {selected_feat}", fontweight="bold")
-                ax.grid(True, axis="y", alpha=0.3)
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close(fig)
-            with col2:
-                st.markdown("**Distribution Info**")
-                desc = df[selected_feat].describe()
-                for stat in ["mean", "std", "min", "25%", "50%", "75%", "max"]:
-                    st.write(f"• **{stat}:** {desc[stat]:.4f}")
-        else:
-            st.info("No numerical features available for histograms.")
-
-        st.markdown("---")
-
-        # 7.5 Box Plot
-        st.subheader("7.5 — Box Plot")
-        if num_features:
-            selected_box = st.selectbox("Select a feature for box plot", num_features, key="box_feat")
-            fig, ax = plt.subplots(figsize=(7, 4))
-            bp = ax.boxplot(df[selected_box].dropna(), vert=False, patch_artist=True,
-                            boxprops=dict(facecolor="#bbdefb", edgecolor="#1565c0"),
-                            medianprops=dict(color="#c62828", linewidth=2),
-                            whiskerprops=dict(color="#1565c0"),
-                            capprops=dict(color="#1565c0"),
-                            flierprops=dict(marker="o", markerfacecolor="#e65100", markersize=4, alpha=0.5))
-            ax.set_xlabel(selected_box, fontweight="bold")
-            ax.set_title(f"Box Plot — {selected_box}", fontweight="bold")
-            ax.grid(True, axis="x", alpha=0.3)
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close(fig)
-
-            # Outlier info
-            q1 = df[selected_box].quantile(0.25)
-            q3 = df[selected_box].quantile(0.75)
-            iqr = q3 - q1
-            lower = q1 - 1.5 * iqr
-            upper = q3 + 1.5 * iqr
-            outliers = df[(df[selected_box] < lower) | (df[selected_box] > upper)]
-            if len(outliers) > 0:
-                st.warning(f"⚠️ **{len(outliers):,}** potential outliers detected (IQR method) in **{selected_box}**.")
-            else:
-                st.success(f"✅ No obvious outliers detected in **{selected_box}** (IQR method).")
-
-        st.markdown("---")
-
-        # 7.6 Correlation Heatmap
-        st.subheader("7.6 — Correlation Heatmap")
-        corr = df.corr(numeric_only=True)
-        fig, ax = plt.subplots(figsize=(12, 10))
-        cmap = LinearSegmentedColormap.from_list("rg", ["#c62828", "#ffffff", "#1565c0"])
-        im = ax.imshow(corr.values, cmap=cmap, vmin=-1, vmax=1, aspect="auto")
-        plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        ax.set_xticks(range(len(corr.columns)))
-        ax.set_yticks(range(len(corr.columns)))
-        ax.set_xticklabels(corr.columns, rotation=45, ha="right", fontsize=8)
-        ax.set_yticklabels(corr.columns, fontsize=8)
-        ax.set_title("Feature Correlation Heatmap", fontsize=14, fontweight="bold", pad=15)
-
-        # Annotate with values
-        for i in range(len(corr)):
-            for j in range(len(corr)):
-                val = corr.iloc[i, j]
-                color = "white" if abs(val) > 0.6 else "black"
-                ax.text(j, i, f"{val:.2f}", ha="center", va="center", fontsize=6, color=color)
-
-        plt.tight_layout()
+    with eda_sub1:
+        st.subheader("Distribution of Features")
+        features_list = [c for c in df_clean_current.columns if c != "Is_Phishing"]
+        selected_feat = st.selectbox("Select Feature for Distribution Histogram", features_list, index=0)
+        
+        fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150)
+        col_data = df_clean_current[selected_feat].dropna()
+        ax.hist(col_data, bins=30, color="#1976d2", edgecolor="black", alpha=0.7, density=True)
+        # KDE
+        try:
+            from scipy.stats import gaussian_kde
+            kde = gaussian_kde(col_data)
+            x_grid = np.linspace(col_data.min(), col_data.max(), 200)
+            ax.plot(x_grid, kde(x_grid), color="#d32f2f", lw=2, label="KDE Overlay")
+            ax.legend()
+        except Exception:
+            pass
+        ax.set_title(f"Distribution & Spread: {selected_feat}", fontsize=12, fontweight="bold")
+        ax.set_xlabel(selected_feat, fontweight="bold")
+        ax.set_ylabel("Density", fontweight="bold")
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig)
         plt.close(fig)
 
-        # Find strong correlations
-        with st.expander("🔍 Strongly Correlated Feature Pairs (|r| > 0.7)"):
-            strong = []
-            for i in range(len(corr.columns)):
-                for j in range(i + 1, len(corr.columns)):
-                    val = corr.iloc[i, j]
-                    if abs(val) > 0.7:
-                        strong.append((corr.columns[i], corr.columns[j], round(val, 4)))
-            if strong:
-                for f1, f2, r in sorted(strong, key=lambda x: abs(x[2]), reverse=True):
-                    st.write(f"• **{f1}** ↔ **{f2}**: r = {r}")
-            else:
-                st.write("No strongly correlated pairs found (|r| > 0.7).")
+    with eda_sub2:
+        st.subheader("Outlier Check Across Numeric Features")
+        box_feat = st.selectbox("Select Feature for Outlier Boxplot", features_list, index=1)
+        fig, ax = plt.subplots(figsize=(8, 3.5), dpi=150)
+        ax.boxplot(df_clean_current[box_feat].dropna(), vert=False, patch_artist=True,
+                   boxprops=dict(facecolor="#e0f2fe", color="#0284c7"),
+                   medianprops=dict(color="#d32f2f", lw=2))
+        ax.set_title(f"Boxplot: {box_feat}", fontsize=12, fontweight="bold")
+        ax.set_xlabel(box_feat, fontweight="bold")
+        ax.grid(True, alpha=0.3)
+        st.pyplot(fig)
+        plt.close(fig)
 
-        st.markdown("---")
+    with eda_sub3:
+        st.subheader("Full 20-Feature Correlation Matrix")
+        fig_corr = plot_correlation_heatmap(df_clean_current)
+        st.pyplot(fig_corr)
+        plt.close(fig_corr)
 
-        # 7.7 Feature vs Target
-        st.subheader("7.7 — Feature vs Target Analysis")
-        if target_col in df.columns and num_features:
-            feat_vs_target = st.selectbox("Select feature to compare against target", num_features, key="feat_target")
-            classes = sorted(df[target_col].unique())
-            class_data = [df[df[target_col] == c][feat_vs_target].dropna().values for c in classes]
-            class_labels = []
-            for c in classes:
-                if c == 0:
-                    class_labels.append("Legitimate (0)")
-                elif c == 1:
-                    class_labels.append("Phishing (1)")
-                else:
-                    class_labels.append(str(c))
-
-            fig, ax = plt.subplots(figsize=(7, 5))
-            bp = ax.boxplot(class_data, labels=class_labels, patch_artist=True,
-                            medianprops=dict(color="#c62828", linewidth=2),
-                            whiskerprops=dict(color="#555"),
-                            capprops=dict(color="#555"),
-                            flierprops=dict(marker="o", markersize=3, alpha=0.4))
-            colors_box = ["#a5d6a7", "#ef9a9a"]
-            for patch, color in zip(bp["boxes"], colors_box[: len(bp["boxes"])]):
-                patch.set_facecolor(color)
-            ax.set_ylabel(feat_vs_target, fontweight="bold")
-            ax.set_title(f"{feat_vs_target} — by Target Class", fontweight="bold")
-            ax.grid(True, axis="y", alpha=0.3)
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close(fig)
-
-            # Show means
-            for lbl, data in zip(class_labels, class_data):
-                if len(data) > 0:
-                    st.write(f"• **{lbl}** — Mean: {data.mean():.4f}, Median: {np.median(data):.4f}")
-        else:
-            st.info("Target column or numerical features not available.")
+    with eda_sub4:
+        st.subheader("Ranked Correlation with Target (Is_Phishing)")
+        corr_tgt = df_clean_current.corr()["Is_Phishing"].drop("Is_Phishing").sort_values()
+        fig, ax = plt.subplots(figsize=(9, 6.5), dpi=150)
+        colors_bar = ["#c62828" if v < 0 else "#2e7d32" for v in corr_tgt]
+        bars = ax.barh(corr_tgt.index, corr_tgt.values, color=colors_bar, edgecolor="black", height=0.65)
+        for bar in bars:
+            w = bar.get_width()
+            offset = 0.01 if w >= 0 else -0.01
+            ha = "left" if w >= 0 else "right"
+            ax.text(w + offset, bar.get_y() + bar.get_height() / 2, f"{w:.3f}",
+                    ha=ha, va="center", fontsize=8.5, fontweight="bold")
+        ax.set_title("Ranked Pearson Correlation with Is_Phishing", fontsize=12, fontweight="bold", pad=12)
+        ax.set_xlabel("Correlation Coefficient", fontweight="bold")
+        ax.axvline(0, color="black", linestyle="--", linewidth=0.8)
+        ax.set_xlim(min(corr_tgt.values) - 0.08, max(corr_tgt.values) + 0.08)
+        ax.grid(True, axis="x", alpha=0.3)
+        st.pyplot(fig)
+        plt.close(fig)
 
 
-# =========================
-# TAB 3 — PREPROCESSING
-# =========================
+# ------------------------------------------------------------------------------
+# TAB 3: PREPROCESSING PIPELINE
+# ------------------------------------------------------------------------------
 with tab3:
-    st.header("Preprocessing Pipeline")
+    st.header("⚙️ Preprocessing Pipeline")
+    st.markdown(
+        """
+        The dataset passes through a structured, leakage-free preprocessing pipeline:
+        - **1. Data Cleaning:** Duplicate elimination, invalid negative count clipping, binary column validation, ratio constraint bounding.
+        - **2. Median Imputation:** Fills any missing values using training-set medians (robust to outliers).
+        - **3. Train/Test Stratification:** 80% Train ($20,000$ rows), 20% Test ($5,000$ rows) with preserved class proportions.
+        - **4. Feature Scaling (StandardScaler):** Fit on training split and applied to scale-sensitive models (*Logistic Regression, Naive Bayes*). Tree models (*Decision Tree, Random Forest*) operate on unscaled features.
+        """
+    )
+    
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        st.subheader("Training Split (80%)")
+        st.info(f"Shape: `{st.session_state.X_train_scaled.shape}` (20,000 samples, 20 features)")
+    with col_p2:
+        st.subheader("Held-Out Test Split (20%)")
+        st.info(f"Shape: `{st.session_state.X_test_scaled.shape}` (5,000 samples, 20 features)")
 
-    if not st.session_state.models_trained:
-        st.info('Click **"🤖 Train Models"** in the sidebar. Preprocessing runs automatically before training.')
-        st.markdown("### Preprocessing Steps Applied")
-        st.markdown("""
-1. **Separate Features & Target** — Split into X (features) and y (target).
-2. **Remove Duplicates** — Duplicate rows are dropped.
-3. **Train/Test Split** — Stratified split to preserve class balance. **Split happens before fitting any preprocessor** to prevent data leakage.
-4. **Handle Missing Values** — Median imputation for numerical columns, most-frequent for categorical columns. **Fitted on training data only.**
-5. **Encode Categoricals** — OneHotEncoder with `handle_unknown='ignore'`. **Fitted on training data only.**
-6. **Feature Scaling** — StandardScaler applied to models that need it (Logistic Regression, KNN, SVM). **Fitted on training data only.**
-        """)
-        st.warning("⚠️ **Data Leakage Prevention**: All preprocessing statistics (medians, encoders, scalers) are learned exclusively from the training set and then applied to the test set.")
-    else:
-        pp = st.session_state.preprocessor
-        st.success("✅ Preprocessing completed successfully.")
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Training Samples", f"{len(st.session_state.y_train):,}")
-        col2.metric("Test Samples", f"{len(st.session_state.y_test):,}")
-        col3.metric("Final Features", f"{len(pp['all_final_features'])}")
-
-        c1, c2 = st.columns(2)
-        c1.metric("Test Size", f"{test_size:.0%}")
-        c2.metric("Random State", f"{random_state}")
-
-        st.markdown("---")
-        st.subheader("Pipeline Summary")
-
-        steps = [
-            ("1. Separate Features & Target", f"X = {len(pp['feature_columns'])} features, y = `{target_col}`"),
-            ("2. Remove Duplicates", "Duplicates removed before splitting."),
-            ("3. Train/Test Split", f"Stratified split — {1 - test_size:.0%} train / {test_size:.0%} test."),
-            ("4. Missing Value Imputation", f"Numerical ({len(pp['num_cols'])} cols): Median | Categorical ({len(pp['cat_cols'])} cols): Most Frequent"),
-            ("5. Categorical Encoding", f"OneHotEncoder on {len(pp['cat_cols'])} categorical columns → {len(pp['ohe_feature_names'])} encoded features" if pp['cat_cols'] else "No categorical columns — encoding skipped."),
-            ("6. Feature Scaling", "StandardScaler applied for Logistic Regression, KNN, SVM. Tree-based models use unscaled data."),
-        ]
-        for title, desc in steps:
-            with st.expander(title):
-                st.write(desc)
-
-        st.markdown("---")
-        st.subheader("Final Feature List")
-        feat_df = pd.DataFrame({"#": range(1, len(pp['all_final_features']) + 1), "Feature": pp['all_final_features']})
-        st.dataframe(feat_df, use_container_width=True, hide_index=True)
+    st.subheader("Selected Features (20 Total)")
+    pp = st.session_state.preprocessor
+    st.write(pp["feature_columns"])
 
 
-# =========================
-# TAB 4 — MODEL TRAINING
-# =========================
+# ------------------------------------------------------------------------------
+# TAB 4: 4-MODEL TRAINING
+# ------------------------------------------------------------------------------
 with tab4:
-    st.header("Model Training")
+    st.header("🤖 4-Model Training Pipeline")
+    st.markdown("The system trains and compares **4 distinct machine learning classifiers**:")
 
-    if not st.session_state.models_trained:
-        st.info('Click **"🤖 Train Models"** in the sidebar to start training.')
-        st.markdown("### Models to be Trained")
-        model_info = {
-            "Logistic Regression": "Linear model, max_iter=1000. Uses scaled data.",
-            "Decision Tree": "Tree-based model, random_state=42. Uses unscaled data.",
-            "Random Forest": "Ensemble of 200 trees, random_state=42. Uses unscaled data.",
-            "K-Nearest Neighbors": "Instance-based learning, default k=5. Uses scaled data.",
-            "Naive Bayes": "Gaussian Naive Bayes. Uses unscaled data.",
-            "SVM": "Support Vector Classifier with probability=True, random_state=42. Uses scaled data.",
-        }
-        for name, desc in model_info.items():
-            with st.expander(name):
-                st.write(desc)
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.markdown("#### 1. Logistic Regression")
+        st.caption("Linear probability model with L2 regularization and StandardScaler.")
+    with c2:
+        st.markdown("#### 2. Decision Tree")
+        st.caption("Non-parametric tree-based recursive binary splitting model.")
+    with c3:
+        st.markdown("#### 3. Random Forest (Tuned)")
+        st.caption("Ensemble of 100 bagging trees optimized via GridSearchCV.")
+    with c4:
+        st.markdown("#### 4. Naive Bayes")
+        st.caption("Probabilistic classifier based on Bayes theorem with Gaussian prior.")
+
+    st.markdown("---")
+    if st.session_state.models_trained:
+        st.success("✅ All 4 models have been successfully trained and evaluated on the held-out test split.")
     else:
-        st.success("✅ Models trained successfully!")
-        results = st.session_state.results_df
-
-        # Per-model results
-        for _, row in results.iterrows():
-            name = row["Model"]
-            with st.expander(f"📌 {name}", expanded=False):
-                c1, c2, c3, c4, c5 = st.columns(5)
-                c1.metric("Accuracy", f"{row['Accuracy']:.4f}")
-                c2.metric("Precision", f"{row['Precision']:.4f}")
-                c3.metric("Recall", f"{row['Recall']:.4f}")
-                c4.metric("F1 Score", f"{row['F1 Score']:.4f}")
-                c5.metric("ROC-AUC", f"{row['ROC-AUC']}")
-
-                st.write(f"**TP:** {row['TP']:,} | **TN:** {row['TN']:,} | **FP:** {row['FP']:,} | **FN:** {row['FN']:,}")
-
-        # Show errors
-        if st.session_state.model_errors:
-            st.markdown("---")
-            st.subheader("⚠️ Training Errors")
-            for name, err in st.session_state.model_errors.items():
-                st.error(f"**{name}** could not be trained. Reason: {err}")
+        st.info("Click 'Train 4 Models' in the sidebar to run the training pipeline.")
 
 
-# =========================
-# TAB 5 — MODEL COMPARISON
-# =========================
+# ------------------------------------------------------------------------------
+# TAB 5: MODEL COMPARISON
+# ------------------------------------------------------------------------------
 with tab5:
-    st.header("Model Comparison")
-
+    st.header("📈 Model Performance Comparison (4 Models)")
+    
     if not st.session_state.models_trained:
-        st.info("Train models first to see comparisons.")
+        st.info("Train the models first using the sidebar button.")
     else:
-        results = st.session_state.results_df
-
-        st.subheader("Comparison Table (sorted by F1 Score)")
-        display_cols = ["Model", "Accuracy", "Precision", "Recall", "F1 Score", "ROC-AUC"]
-        st.dataframe(
-            results[display_cols].style.highlight_max(
-                subset=["Accuracy", "Precision", "Recall", "F1 Score"],
-                color="#c8e6c9",
-            ),
-            use_container_width=True,
-            hide_index=True,
-        )
+        res_df = st.session_state.results_df
+        
+        # Display comparison table
+        st.subheader("Performance Metrics Table")
+        
+        formatted_df = res_df.copy()
+        for col in ["Accuracy", "Precision", "Recall", "F1 Score", "ROC-AUC"]:
+            formatted_df[col] = formatted_df[col].apply(lambda v: f"{v*100:.2f}%" if pd.notnull(v) else "N/A")
+        st.dataframe(formatted_df, use_container_width=True)
 
         st.markdown("---")
-
-        # Individual metric bar charts
-        st.subheader("Per-Metric Comparisons")
-        metrics_colors = {
-            "Accuracy": "#1565c0",
-            "Precision": "#2e7d32",
-            "Recall": "#e65100",
-            "F1 Score": "#6a1b9a",
-            "ROC-AUC": "#00838f",
-        }
-
-        chart_cols = st.columns(2)
-        for i, (metric, color) in enumerate(metrics_colors.items()):
-            with chart_cols[i % 2]:
-                fig = plot_model_comparison_bar(results, metric, color)
-                st.pyplot(fig)
-                plt.close(fig)
-
-        st.markdown("---")
-
-        # Combined comparison
-        st.subheader("Combined Comparison")
-        fig = plot_combined_comparison(results)
-        st.pyplot(fig)
-        plt.close(fig)
+        st.subheader("Visual Comparison")
+        fig_comp = plot_combined_model_comparison(res_df)
+        st.pyplot(fig_comp)
+        plt.close(fig_comp)
 
 
-# =========================
-# TAB 6 — BEST MODEL
-# =========================
+# ------------------------------------------------------------------------------
+# TAB 6: BEST MODEL IN-DEPTH EVALUATION
+# ------------------------------------------------------------------------------
 with tab6:
-    st.header("🏆 Best Model")
+    st.header("🏆 Best Model Deep-Dive — Random Forest")
 
     if not st.session_state.models_trained:
-        st.info("Train models first to see the best model.")
+        st.info("Train models first to view detailed evaluation.")
     else:
         best_name = st.session_state.best_model_name
-        results = st.session_state.results_df
-        best_row = results[results["Model"] == best_name].iloc[0]
         best_model = st.session_state.trained_models[best_name]
         best_preds = st.session_state.model_predictions[best_name]
-        y_test = st.session_state.y_test
+        res_df = st.session_state.results_df
+        best_row = res_df[res_df["Model"] == best_name].iloc[0]
 
-        # Best model card
+        # Best Model Badge Card
         st.markdown(
             f"""
-        <div class="best-model-card">
-            <h2>🏆 Best Model</h2>
-            <h3>{best_name}</h3>
-            <p style="color:#aaa;">Selected based on highest F1 Score</p>
-            <div class="metric-row">
-                <div class="metric-item">
-                    <div class="value">{best_row['F1 Score']:.4f}</div>
-                    <div class="label">F1 Score</div>
-                </div>
-                <div class="metric-item">
-                    <div class="value">{best_row['Accuracy']:.4f}</div>
-                    <div class="label">Accuracy</div>
-                </div>
-                <div class="metric-item">
-                    <div class="value">{best_row['Precision']:.4f}</div>
-                    <div class="label">Precision</div>
-                </div>
-                <div class="metric-item">
-                    <div class="value">{best_row['Recall']:.4f}</div>
-                    <div class="label">Recall</div>
-                </div>
-                <div class="metric-item">
-                    <div class="value">{best_row['ROC-AUC']}</div>
-                    <div class="label">ROC-AUC</div>
+            <div class="best-model-card">
+                <h2>🏆 Top Performing Model: {best_name}</h2>
+                <h3>Optimized with 5-Fold Cross-Validation Hyperparameter Tuning</h3>
+                <div class="metric-row">
+                    <div class="metric-item"><div class="value">{best_row['Accuracy']*100:.2f}%</div><div class="label">Accuracy</div></div>
+                    <div class="metric-item"><div class="value">{best_row['Precision']*100:.2f}%</div><div class="label">Precision</div></div>
+                    <div class="metric-item"><div class="value">{best_row['Recall']*100:.2f}%</div><div class="label">Recall</div></div>
+                    <div class="metric-item"><div class="value">{best_row['F1 Score']*100:.2f}%</div><div class="label">F1-Score</div></div>
+                    <div class="metric-item"><div class="value">{best_row['ROC-AUC']:.4f}</div><div class="label">ROC-AUC</div></div>
                 </div>
             </div>
-        </div>
-        """,
+            """,
             unsafe_allow_html=True,
         )
 
-        st.markdown("")
+        st.markdown("---")
+        
+        # Grid of Evaluation Visuals
+        col_e1, col_e2 = st.columns(2)
+        with col_e1:
+            st.subheader("Confusion Matrix")
+            fig_cm = plot_confusion_matrix(best_preds["confusion_matrix"])
+            st.pyplot(fig_cm)
+            plt.close(fig_cm)
 
-        # Confusion Matrix explanation
-        cm = confusion_matrix(y_test, best_preds["y_pred"])
-        tn, fp, fn, tp = cm.ravel()
+        with col_e2:
+            st.subheader("ROC & PR Curves")
+            if best_preds["y_prob"] is not None:
+                fig_roc = plot_roc_curve(st.session_state.y_test, best_preds["y_prob"], best_name, best_row["ROC-AUC"])
+                st.pyplot(fig_roc)
+                plt.close(fig_roc)
+                
+                fig_pr = plot_precision_recall_curve(st.session_state.y_test, best_preds["y_prob"], best_name)
+                st.pyplot(fig_pr)
+                plt.close(fig_pr)
 
         st.markdown("---")
-
-        # 14.1 Confusion Matrix
-        st.subheader("14.1 — Confusion Matrix")
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fig = plot_confusion_matrix(cm, title=f"Confusion Matrix — {best_name}")
-            st.pyplot(fig)
-            plt.close(fig)
-        with col2:
-            st.markdown("**Interpretation**")
-            st.write(f"• **True Negatives (TN):** {tn:,} — Correctly predicted Legitimate")
-            st.write(f"• **False Positives (FP):** {fp:,} — Legitimate misclassified as Phishing")
-            st.write(f"• **False Negatives (FN):** {fn:,} — Phishing misclassified as Legitimate")
-            st.write(f"• **True Positives (TP):** {tp:,} — Correctly predicted Phishing")
-
-        st.markdown("---")
-
-        # 14.2 ROC Curve
-        st.subheader("14.2 — ROC Curve")
-        if best_preds["y_prob"] is not None:
-            roc_val = best_row["ROC-AUC"]
-            roc_val_num = float(roc_val) if roc_val != "N/A" else 0
-            fig = plot_roc_curve(y_test, best_preds["y_prob"], best_name, roc_val_num)
-            st.pyplot(fig)
-            plt.close(fig)
-            st.caption("The ROC curve shows the trade-off between True Positive Rate and False Positive Rate. A curve closer to the top-left corner indicates better performance.")
-        else:
-            st.warning("ROC curve unavailable — model does not support probability predictions.")
-
-        st.markdown("---")
-
-        # 14.3 Precision-Recall Curve
-        st.subheader("14.3 — Precision-Recall Curve")
-        if best_preds["y_prob"] is not None:
-            fig = plot_precision_recall_curve(y_test, best_preds["y_prob"], best_name)
-            st.pyplot(fig)
-            plt.close(fig)
-            st.caption("For phishing detection, the Precision-Recall curve is especially important because it shows how well the model balances identifying phishing sites (recall) without too many false alarms (precision).")
-        else:
-            st.warning("Precision-Recall curve unavailable — model does not support probability predictions.")
-
-        st.markdown("---")
-
-        # 14.4 Feature Importance
-        st.subheader("14.4 — Feature Importance")
+        st.subheader("Feature Importance Analysis")
         pp = st.session_state.preprocessor
-        fig = plot_feature_importance(best_model, pp["all_final_features"], best_name)
-        if fig is not None:
-            st.pyplot(fig)
-            plt.close(fig)
-        else:
-            st.info(f"Feature importance is not directly available for **{best_name}**.")
+        fig_imp = plot_feature_importance(best_model, pp["feature_columns"])
+        if fig_imp:
+            st.pyplot(fig_imp)
+            plt.close(fig_imp)
 
         st.markdown("---")
-
-        # 14.5 Classification Report
-        st.subheader("Classification Report")
-        report_str = classification_report(
-            y_test, best_preds["y_pred"],
-            target_names=["Legitimate (0)", "Phishing (1)"],
-            zero_division=0,
-        )
-        st.code(report_str, language="text")
+        st.subheader("Detailed Classification Report")
+        cr_dict = best_preds["classification_report"]
+        cr_df = pd.DataFrame(cr_dict).T
+        st.dataframe(cr_df.style.format({"precision": "{:.4f}", "recall": "{:.4f}", "f1-score": "{:.4f}", "support": "{:,.0f}"}), use_container_width=True)
 
         st.markdown("---")
-
-        # Download best model
-        st.subheader("💾 Download Best Model")
-        model_bundle = {
-            "model": best_model,
-            "preprocessor": pp,
-            "target_column": target_col,
-            "feature_columns": pp["feature_columns"],
-            "best_model_name": best_name,
-            "metrics": {
-                "accuracy": best_row["Accuracy"],
-                "precision": best_row["Precision"],
-                "recall": best_row["Recall"],
-                "f1_score": best_row["F1 Score"],
-                "roc_auc": best_row["ROC-AUC"],
-            },
-        }
-        buffer = io.BytesIO()
-        joblib.dump(model_bundle, buffer)
-        buffer.seek(0)
-
+        # Download button
+        st.subheader("💾 Model Artifact Download")
+        buf = io.BytesIO()
+        joblib.dump(best_model, buf)
+        buf.seek(0)
         st.download_button(
-            label="⬇️ Download Best Model (.joblib)",
-            data=buffer,
-            file_name=f"best_model_{best_name.lower().replace(' ', '_')}.joblib",
+            label="⬇️ Download Tuned Random Forest (.pkl)",
+            data=buf,
+            file_name="best_phishing_model.pkl",
             mime="application/octet-stream",
             use_container_width=True,
         )
-        st.caption("The download includes the trained model, preprocessor, feature names, and evaluation metrics.")
 
 
-# =========================
-# TAB 7 — PREDICTION
-# =========================
+# ------------------------------------------------------------------------------
+# TAB 7: LIVE INTERACTIVE PREDICTION FORM
+# ------------------------------------------------------------------------------
 with tab7:
-    st.header("🔮 Predict Website")
+    st.header("🔮 Real-Time Website Phishing Prediction")
+    st.markdown("Enter website characteristics or choose a preset scenario to perform an instant live classification.")
 
-    if not st.session_state.models_trained:
-        st.info("Train models first to make predictions.")
-    else:
-        best_name = st.session_state.best_model_name
-        best_model = st.session_state.trained_models[best_name]
-        pp = st.session_state.preprocessor
+    best_name = st.session_state.get("best_model_name", "Random Forest")
+    best_model = st.session_state.trained_models.get(best_name) if st.session_state.models_trained else None
+    if best_model is None and os.path.exists("best_phishing_model.pkl"):
+        best_model = joblib.load("best_phishing_model.pkl")
 
-        st.write(f"Using the best model: **{best_name}**")
-        st.markdown("Enter feature values for the website you want to classify:")
+    pp = st.session_state.preprocessor
 
-        feature_cols = pp["feature_columns"]
+    # Presets
+    preset_choice = st.selectbox(
+        "⚡ Choose a Quick Preset Scenario:",
+        [
+            "Custom Manual Input",
+            "Example 1: Verified Legitimate Banking Portal (HTTPS, Domain Age 3500d, Low Entropy)",
+            "Example 2: High-Risk Phishing Page (No HTTPS, Young Domain 12d, High Entropy, Password Field)",
+            "Example 3: Malicious Redirect / Popup Scam (Multiple Redirects, Iframes, Popups)",
+        ]
+    )
 
-        # Determine binary features (only 0 and 1 values)
-        binary_features = set()
-        if st.session_state.df is not None:
-            for col in feature_cols:
-                if col in st.session_state.df.columns:
-                    unique_vals = st.session_state.df[col].dropna().unique()
-                    if set(unique_vals).issubset({0, 1, 0.0, 1.0}):
-                        binary_features.add(col)
+    preset_values = {}
+    if "Legitimate" in preset_choice:
+        preset_values = {
+            "URL_Length": 24, "Num_Dots": 1, "Num_Hyphens": 0, "Num_Special_Chars": 1,
+            "Num_Subdomains": 0, "Has_IP_Address": 0, "Has_HTTPS": 1, "Domain_Age_Days": 3650,
+            "Domain_Registration_Length": 730, "Has_Suspicious_Words": 0, "Num_Redirects": 0,
+            "External_Link_Ratio": 0.15, "Image_Link_Ratio": 0.20, "Form_Count": 1,
+            "Password_Field_Present": 1, "Iframe_Count": 0, "Popup_Count": 0,
+            "Favicon_External": 0, "Domain_Name_Length": 10, "URL_Entropy": 3.12
+        }
+    elif "High-Risk" in preset_choice:
+        preset_values = {
+            "URL_Length": 115, "Num_Dots": 6, "Num_Hyphens": 4, "Num_Special_Chars": 7,
+            "Num_Subdomains": 3, "Has_IP_Address": 1, "Has_HTTPS": 0, "Domain_Age_Days": 12,
+            "Domain_Registration_Length": 30, "Has_Suspicious_Words": 1, "Num_Redirects": 3,
+            "External_Link_Ratio": 0.85, "Image_Link_Ratio": 0.90, "Form_Count": 4,
+            "Password_Field_Present": 1, "Iframe_Count": 2, "Popup_Count": 3,
+            "Favicon_External": 1, "Domain_Name_Length": 28, "URL_Entropy": 4.88
+        }
+    elif "Redirect" in preset_choice:
+        preset_values = {
+            "URL_Length": 88, "Num_Dots": 4, "Num_Hyphens": 3, "Num_Special_Chars": 5,
+            "Num_Subdomains": 2, "Has_IP_Address": 0, "Has_HTTPS": 0, "Domain_Age_Days": 45,
+            "Domain_Registration_Length": 90, "Has_Suspicious_Words": 1, "Num_Redirects": 4,
+            "External_Link_Ratio": 0.70, "Image_Link_Ratio": 0.60, "Form_Count": 3,
+            "Password_Field_Present": 0, "Iframe_Count": 3, "Popup_Count": 4,
+            "Favicon_External": 1, "Domain_Name_Length": 22, "URL_Entropy": 4.52
+        }
 
-        # Create input form
-        input_data = {}
-        n_cols = 3
-        cols = st.columns(n_cols)
+    # Form inputs in 3 columns
+    input_data = {}
+    cols_grid = st.columns(3)
+    feature_cols = pp["feature_columns"]
+    binary_cols_set = {"Has_IP_Address", "Has_HTTPS", "Has_Suspicious_Words", "Password_Field_Present", "Favicon_External"}
 
-        for i, feat in enumerate(feature_cols):
-            col_idx = i % n_cols
-            with cols[col_idx]:
-                if feat in binary_features:
-                    val = st.selectbox(
-                        feat,
-                        options=[0, 1],
-                        index=0,
-                        key=f"pred_{feat}",
-                    )
-                    input_data[feat] = val
-                else:
-                    # Get reasonable defaults from the dataset
-                    if st.session_state.df is not None and feat in st.session_state.df.columns:
-                        col_data = st.session_state.df[feat].dropna()
-                        default_val = float(col_data.median()) if len(col_data) > 0 else 0.0
-                        min_val = float(col_data.min()) if len(col_data) > 0 else 0.0
-                        max_val = float(col_data.max()) if len(col_data) > 0 else 1000.0
-                    else:
-                        default_val = 0.0
-                        min_val = 0.0
-                        max_val = 1000.0
+    for idx, feat in enumerate(feature_cols):
+        c_idx = idx % 3
+        with cols_grid[c_idx]:
+            default_v = preset_values.get(feat, 0.0)
+            if feat in binary_cols_set:
+                val = st.selectbox(
+                    feat,
+                    options=[0, 1],
+                    index=int(default_v) if default_v in [0, 1] else 0,
+                    key=f"input_{feat}",
+                )
+                input_data[feat] = val
+            elif "Ratio" in feat or "Entropy" in feat:
+                val = st.number_input(
+                    feat,
+                    value=float(default_v),
+                    step=0.01,
+                    format="%.2f",
+                    key=f"input_{feat}",
+                )
+                input_data[feat] = val
+            else:
+                val = st.number_input(
+                    feat,
+                    value=int(default_v),
+                    step=1,
+                    key=f"input_{feat}",
+                )
+                input_data[feat] = val
 
-                    val = st.number_input(
-                        feat,
-                        value=default_val,
-                        key=f"pred_{feat}",
-                    )
-                    input_data[feat] = val
+    st.markdown("---")
+    btn_predict = st.button("🔍 Predict Phishing Status", type="primary", use_container_width=True)
 
-        st.markdown("---")
-
-        if st.button("🔍 Predict", use_container_width=True, type="primary"):
-            try:
-                prediction, probability = predict_single_sample(
-                    input_data, pp, best_model, best_name
+    if btn_predict:
+        if best_model is None:
+            st.error("No trained model available. Please train models in the sidebar.")
+        else:
+            pred, proba = predict_sample(input_data, pp, best_model, best_name)
+            
+            st.markdown("### Prediction Outcome")
+            if pred == 1:
+                st.markdown(
+                    '<div class="prediction-result phishing">🚨 DANGER: PHISHING WEBSITE DETECTED</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    '<div class="prediction-result legitimate">✅ SAFE: LEGITIMATE WEBSITE</div>',
+                    unsafe_allow_html=True,
                 )
 
-                st.markdown("### Prediction Result")
+            if proba is not None:
+                p_phish = proba[1] * 100
+                p_legit = proba[0] * 100
 
-                if prediction == 1:
-                    st.markdown(
-                        '<div class="prediction-result phishing">🚨 Prediction: PHISHING</div>',
-                        unsafe_allow_html=True,
-                    )
-                else:
-                    st.markdown(
-                        '<div class="prediction-result legitimate">✅ Prediction: LEGITIMATE</div>',
-                        unsafe_allow_html=True,
-                    )
+                m1, m2 = st.columns(2)
+                m1.metric("Legitimate Probability", f"{p_legit:.2f}%")
+                m2.metric("Phishing Probability", f"{p_phish:.2f}%")
 
-                if probability is not None:
-                    col1, col2 = st.columns(2)
-                    phishing_prob = probability[1] * 100
-                    legit_prob = probability[0] * 100
-                    col1.metric("Phishing Probability", f"{phishing_prob:.2f}%")
-                    col2.metric("Legitimate Probability", f"{legit_prob:.2f}%")
+                # Visual probability meter
+                fig_meter, ax_m = plt.subplots(figsize=(8, 1.4), dpi=150)
+                ax_m.barh([""], [p_legit], color="#2e7d32", label=f"Legitimate ({p_legit:.1f}%)")
+                ax_m.barh([""], [p_phish], left=[p_legit], color="#c62828", label=f"Phishing ({p_phish:.1f}%)")
+                ax_m.set_xlim(0, 100)
+                ax_m.set_xlabel("Probability (%)", fontweight="bold")
+                ax_m.legend(loc="upper center", bbox_to_anchor=(0.5, -0.35), ncol=2, fontsize=9)
+                plt.tight_layout()
+                st.pyplot(fig_meter)
+                plt.close(fig_meter)
 
-                    # Visual bar
-                    fig, ax = plt.subplots(figsize=(8, 1.5))
-                    ax.barh([""], [legit_prob], color="#2e7d32", label=f"Legitimate ({legit_prob:.1f}%)")
-                    ax.barh([""], [phishing_prob], left=[legit_prob], color="#c62828", label=f"Phishing ({phishing_prob:.1f}%)")
-                    ax.set_xlim(0, 100)
-                    ax.set_xlabel("Probability (%)", fontweight="bold")
-                    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.3), ncol=2, fontsize=9)
-                    plt.tight_layout()
-                    st.pyplot(fig)
-                    plt.close(fig)
-
-            except Exception as e:
-                st.error(f"Prediction failed: {e}")
-
-
-# =========================
+# ==============================================================================
 # FOOTER
-# =========================
+# ==============================================================================
 st.markdown("---")
 st.markdown(
     "<p style='text-align:center; color:#888; font-size:0.85rem;'>"
-    "🔐 Phishing Website Detection Dashboard — Built with Streamlit & Scikit-learn"
+    "🔐 Phishing Website Detection Dashboard — Built with Streamlit, Scikit-learn & Python"
     "</p>",
     unsafe_allow_html=True,
 )

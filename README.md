@@ -1,176 +1,131 @@
 # 🔐 Phishing Website Detection Using Machine Learning
 
-An end-to-end machine learning project for detecting phishing websites using multiple classification algorithms. Built with Streamlit for an interactive dashboard experience.
+An end-to-end machine learning system and interactive Streamlit web dashboard for detecting phishing websites with high accuracy ($97.16\%$) and F1-score ($96.50\%$).
 
-## 🚀 Features
+---
 
-- **Interactive Web Dashboard** — Two Streamlit applications with rich UI components
-- **Dataset Upload** — Upload your own CSV dataset for analysis
-- **Exploratory Data Analysis (EDA)** — Visualize distributions, correlations, outliers, and class balance
-- **6 Classification Models** — Train and compare multiple algorithms side-by-side:
-  - Logistic Regression
-  - Decision Tree
-  - Random Forest
-  - K-Nearest Neighbors (KNN)
-  - Naive Bayes (Gaussian)
-  - Support Vector Machine (SVM)
-- **Rigorous Preprocessing** — Data leakage prevention with train-only fitted transformers
-- **Cross-Validation** — Stratified K-Fold CV for robust model evaluation
-- **Model Explainability** — Feature importance plots and confusion matrices
-- **Single Sample Prediction** — Input custom feature values for real-time detection
-- **Risk Level Assessment** — HIGH / MEDIUM / LOW risk categorization
-- **Model Export** — Download the best trained model as a joblib bundle
+## 🌟 Key Highlights
 
-## 📁 Project Structure
+- **4 Core Classifiers**: Trained, benchmarked, and evaluated side-by-side:
+  1. **Logistic Regression** (Standardized linear baseline)
+  2. **Decision Tree** (Non-parametric rule-based tree)
+  3. **Random Forest (Tuned)** (Ensemble of 100 bagging trees — **Best Model**)
+  4. **Naive Bayes** (Gaussian NB probabilistic classifier)
+- **Pre-trained Model Artifacts Included**: Serialized `best_phishing_model.pkl` and `phishing_scaler.pkl` auto-load on launch for instant predictions.
+- **Interactive Multi-Tab Dashboard**:
+  - 📋 **Dataset Overview**: Dataset stats, target balance, preview, and column dictionary.
+  - 📊 **EDA & Visualizations**: Feature distributions with KDE, boxplot outlier checks, full 20-feature correlation matrix, and ranked feature-to-target correlations.
+  - ⚙️ **Preprocessing Pipeline**: Leakage-free cleaning, median imputation, stratified train/test split ($80\% / 20\%$), and scaling.
+  - 🤖 **4-Model Training**: One-click training and evaluation of the 4 models.
+  - 📈 **Model Comparison**: Metric comparison table and grouped visual charts (Accuracy, Precision, Recall, F1-Score, ROC-AUC).
+  - 🏆 **Best Model In-Depth**: Confusion matrix, ROC curve, Precision-Recall curve, feature importance ranking, and classification report.
+  - 🔮 **Live Website Prediction**: Instant classification with preset scenarios (Legitimate Banking, High-Risk Phishing, Malicious Redirect) and a live probability meter.
+
+---
+
+## 📁 Repository Structure
 
 ```
 Ml-project/
-├── app.py                           # Main Streamlit app (7-tab dashboard)
-├── phishing_detector_app.py         # Enhanced Streamlit app (8-tab + history + CV)
-├── phishing_website_raw.csv         # Sample phishing website dataset
-├── requirements.txt                 # Python dependencies
-├── .gitignore                       # Git ignore rules
-└── README.md                        # Project documentation
+├── app.py                           # Production Streamlit application
+├── best_phishing_model.pkl          # Pre-trained Random Forest model artifact
+├── phishing_scaler.pkl              # Fitted StandardScaler artifact
+├── phishing_website_raw.csv         # Structured dataset (25,000 samples, 20 features)
+├── Final_Report.docx                # Complete project documentation report
+├── requirements.txt                 # Pinned production Python dependencies
+├── Dockerfile                       # Production container definition
+├── Procfile                         # PaaS deployment configuration (Render/Heroku)
+├── .streamlit/
+│   └── config.toml                  # Streamlit theme and server configuration
+└── README.md                        # Documentation & deployment guide
 ```
 
-## 🛠️ Tech Stack
+---
 
-| Category       | Libraries/Tools                                      |
-|----------------|------------------------------------------------------|
-| **Language**   | Python 3.8+                                          |
-| **Framework**  | Streamlit                                            |
-| **ML Core**    | scikit-learn                                         |
-| **Data**       | pandas, NumPy                                        |
-| **Visuals**    | matplotlib                                           |
-| **Models**     | joblib (serialization)                               |
+## 🚀 Deployment Guide
 
-## 📦 Installation
+### Option 1: Streamlit Community Cloud (Recommended — 100% Free & 1-Click)
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/05tanish/ML-Project.git
-cd ML-Project
-```
+1. Push your repository to GitHub:
+   ```bash
+   git add .
+   git commit -m "Deploy: Phishing Website Detection Dashboard"
+   git push origin main
+   ```
+2. Go to [share.streamlit.io](https://share.streamlit.io).
+3. Click **"New app"**.
+4. Select your repository: `05tanish/ML-Project` (or your repo name).
+5. Set **Main file path**: `app.py`.
+6. Click **"Deploy!"** — Streamlit Cloud will install dependencies and launch your live public URL!
 
-2. **Create and activate a virtual environment (recommended)**
-```bash
-# macOS/Linux
-python3 -m venv venv
-source venv/bin/activate
+---
 
-# Windows
-python -m venv venv
-venv\Scripts\activate
-```
+### Option 2: Docker Deployment
 
-3. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+1. **Build the Docker Image**:
+   ```bash
+   docker build -t phishing-detector-app .
+   ```
 
-## 🎯 Usage
+2. **Run the Container**:
+   ```bash
+   docker run -d -p 8501:8501 --name phishing-app phishing-detector-app
+   ```
 
-### Running the Applications
+3. Open your browser at: `http://localhost:8501`
 
-Choose one of the two Streamlit apps:
+---
 
-```bash
-# App 1 — 7-tab dashboard
-streamlit run app.py
+### Option 3: Local Installation & Execution
 
-# App 2 — 8-tab enhanced dashboard (recommended)
-streamlit run phishing_detector_app.py
-```
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/05tanish/ML-Project.git
+   cd ML-Project
+   ```
 
-Your default browser will open automatically at `http://localhost:8501`.
+2. **Create a Virtual Environment**:
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate       # On Windows: venv\Scripts\activate
+   ```
 
-### Workflow
+3. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-1. **Upload Dataset** — Use the sidebar to upload a CSV file with a binary target column (e.g., `Is_Phishing` with 0 = Legitimate, 1 = Phishing).
-2. **Configure Settings** — Adjust test size, random state, CV folds, and Random Forest tree count.
-3. **Run EDA** — Explore the data quality, distributions, and correlations.
-4. **Train Models** — Click "Train & Compare Models" to run all six classifiers.
-5. **Compare Performance** — Rank models by F1 Score, Accuracy, Precision, Recall, ROC-AUC, and CV F1.
-6. **Inspect Best Model** — View confusion matrix, ROC curve, precision-recall curve, and feature importances.
-7. **Make Predictions** — Use the interactive form to classify a single website or download the model for production.
+4. **Launch the Dashboard**:
+   ```bash
+   streamlit run app.py
+   ```
 
-### Dataset Format
+---
 
-Your CSV should contain:
-- One row per website sample
-- Multiple feature columns (numerical and/or categorical)
-- One binary target column (0 = Legitimate, 1 = Phishing). Common names: `Is_Phishing`, `Result`, `Label`.
+## 📊 Model Performance Summary
 
-A sample dataset `phishing_website_raw.csv` is provided to get started.
+Evaluated on a held-out test split of $5,000$ unseen website records:
 
-## 🧠 Preprocessing Pipeline
+| Model | Accuracy | Precision | Recall | F1-Score | ROC-AUC |
+|:---|:---:|:---:|:---:|:---:|:---:|
+| **Random Forest (Tuned)** | **97.16%** | **97.03%** | **95.98%** | **96.50%** | **0.9942** |
+| **Logistic Regression** | 97.10% | 96.97% | 95.88% | 96.42% | 0.9930 |
+| **Naive Bayes** | 97.02% | 96.55% | 96.13% | 96.34% | 0.9918 |
+| **Decision Tree** | 92.32% | 89.88% | 91.47% | 90.67% | 0.9219 |
 
-All preprocessors are **fitted exclusively on training data** to prevent data leakage:
+---
 
-| Step           | Method                                               |
-|----------------|------------------------------------------------------|
-| Duplicates     | Drop exact duplicate rows                            |
-| Split          | Stratified train/test split (preserves class balance)|
-| Imputation     | Numerical → Median; Categorical → Most Frequent      |
-| Encoding       | One-Hot Encoder with `handle_unknown='ignore'`       |
-| Scaling        | StandardScaler (applied only to LR, KNN, SVM)        |
+## 🛠️ Technology Stack
 
-## 📊 Evaluation Metrics
+- **Frontend / Framework**: Streamlit
+- **Machine Learning**: Scikit-Learn
+- **Data Manipulation**: Pandas, NumPy
+- **Visualizations**: Matplotlib, Seaborn
+- **Persistence**: Joblib
+- **Containerization**: Docker
 
-Models are evaluated and ranked on:
+---
 
-- **Accuracy** — Overall correctness
-- **Precision** — Minimize false alarms (legit flagged as phish)
-- **Recall** — Catch as many phishing sites as possible
-- **F1 Score** — Harmonic mean of precision and recall (primary ranking metric)
-- **ROC-AUC** — Discrimination ability across thresholds
-- **CV F1** — Stratified K-Fold cross-validated F1 (stability check)
+## 📄 License & Attribution
 
-## 🤖 Models
-
-| Model                  | Scaling Required | Use Case                                     |
-|------------------------|------------------|----------------------------------------------|
-| Logistic Regression    | ✅ Yes           | Baseline linear classifier                   |
-| Decision Tree          | ❌ No            | Interpretable rule-based model               |
-| Random Forest          | ❌ No            | Ensemble; typically highest performance      |
-| K-Nearest Neighbors    | ✅ Yes           | Instance-based, distance-sensitive           |
-| Naive Bayes            | ❌ No            | Fast probabilistic baseline                  |
-| SVM                    | ✅ Yes           | High-dimensional, non-linear boundaries      |
-
-## 💾 Model Export
-
-After training, navigate to the **Best Model** tab and download a serialized bundle containing:
-- Trained best model
-- Fitted preprocessor pipeline
-- Feature and target column metadata
-- Performance metrics dictionary
-
-Load in production:
-```python
-import joblib
-
-bundle = joblib.load("best_model.joblib")
-model = bundle["model"]
-preprocessor = bundle["preprocessor"]
-```
-
-## ⚙️ Requirements
-
-Full list in `requirements.txt`:
-
-```
-streamlit>=1.28.0
-scikit-learn>=1.3.0
-pandas>=2.0.0
-numpy>=1.24.0
-matplotlib>=3.7.0
-joblib>=1.3.0
-```
-
-## 📝 License
-
-This project is for educational and research purposes.
-
-## 🤝 Contributing
-
-Feel free to submit issues and pull requests. Suggestions for additional models (XGBoost, LightGBM, Neural Networks) are welcome!
+This project is built for educational, research, and cybersecurity threat detection demonstration purposes.

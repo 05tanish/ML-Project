@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.git/
+.gitignore
+.DS_Store
+.ipynb_checkpoints
+build_report.py
+report_images/
+extracted_nb_images/
+pdf_structure.json
