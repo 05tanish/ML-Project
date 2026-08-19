@@ -614,9 +614,9 @@ if st.session_state.df is not None and "df_clean" not in st.session_state:
     st.session_state.preprocessor = preprocessor
 
 # Auto-load pre-trained model PKL if available
-if os.path.exists("best_phishing_model.pkl") and not st.session_state.models_trained:
+if os.path.exists("api/best_phishing_model.pkl") and not st.session_state.models_trained:
     try:
-        loaded_model = joblib.load("best_phishing_model.pkl")
+        loaded_model = joblib.load("api/best_phishing_model.pkl")
         models = get_models(42)
         # Fast evaluate all 4 models so full comparison is available immediately
         results_df, trained_models, model_predictions, errors = train_and_evaluate_models(
@@ -705,7 +705,7 @@ with st.sidebar:
             st.success(f"✅ Trained 4 models! Best: **{st.session_state.best_model_name}**")
 
     st.markdown("---")
-    if os.path.exists("best_phishing_model.pkl"):
+    if os.path.exists("api/best_phishing_model.pkl"):
         st.info("📦 Pre-trained Model Loaded: `best_phishing_model.pkl`")
 
 
@@ -1006,7 +1006,7 @@ with tab6:
         st.download_button(
             label="⬇️ Download Tuned Random Forest (.pkl)",
             data=buf,
-            file_name="best_phishing_model.pkl",
+            file_name="api/best_phishing_model.pkl",
             mime="application/octet-stream",
             use_container_width=True,
         )
@@ -1021,8 +1021,8 @@ with tab7:
 
     best_name = st.session_state.get("best_model_name", "Random Forest")
     best_model = st.session_state.trained_models.get(best_name) if st.session_state.models_trained else None
-    if best_model is None and os.path.exists("best_phishing_model.pkl"):
-        best_model = joblib.load("best_phishing_model.pkl")
+    if best_model is None and os.path.exists("api/best_phishing_model.pkl"):
+        best_model = joblib.load("api/best_phishing_model.pkl")
 
     pp = st.session_state.preprocessor
 

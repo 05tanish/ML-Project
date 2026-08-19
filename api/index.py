@@ -15,8 +15,8 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # Load model artifacts
-MODEL_PATH = os.path.join(os.path.dirname(__file__), "..", "best_phishing_model.pkl")
-SCALER_PATH = os.path.join(os.path.dirname(__file__), "..", "phishing_scaler.pkl")
+MODEL_PATH = os.path.join(os.path.dirname(__file__), "best_phishing_model.pkl")
+SCALER_PATH = os.path.join(os.path.dirname(__file__), "phishing_scaler.pkl")
 
 model = None
 scaler = None
