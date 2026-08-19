@@ -19,7 +19,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-PYMETA_PATH
 
 # --- Virtual Environments ---
 venv/
@@ -40,31 +39,25 @@ venv.bak/
 .settings/
 .classpath
 
-# --- macOS ---
+# --- OS generated ---
 .DS_Store
 .AppleDouble
 .LSOverride
 Icon
 ._*
-
-# --- Windows ---
 Thumbs.db
 ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
-*.cab
-*.msi
-*.msix
-*.msm
-*.msp
-*.lnk
+*.bak
+*.tmp
 
 # --- Jupyter Notebook ---
 .ipynb_checkpoints
 */.ipynb_checkpoints/*
 *.ipynb_meta
 
-# --- ML / Data ---
+# --- ML Model Artifacts (Whitelist production models only) ---
 *.pkl
 !best_phishing_model.pkl
 !phishing_scaler.pkl
@@ -78,7 +71,7 @@ $RECYCLE.BIN/
 *.ckpt
 *.model
 
-# --- Large datasets (keep sample only) ---
+# --- Large Datasets (Whitelist project dataset only) ---
 *.csv
 !phishing_website_raw.csv
 *.parquet
@@ -88,40 +81,23 @@ $RECYCLE.BIN/
 *.xls
 *.jsonl
 
-# --- Logs ---
-logs/
-*.log
-*.out
+# --- Temporary & Scratch Files ---
+other/
+report_images/
+extracted_nb_images/
+build_report.py
+pdf_structure.json
+appcopy.py
+phishing_detector_app.py
 
-# --- Caches ---
+# --- Streamlit Secrets & Caches ---
+.streamlit/secrets.toml
 .cache/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.hypothesis/
-__pypackages__/
 
-# --- Streamlit ---
-.streamlit/secrets.toml
-
-# --- Testing / Coverage ---
-.coverage
-.coverage.*
-htmlcov/
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-appcopy.py
-pdf_structure.json
-phishing_detector_app.py
-
-other
-# --- OS generated ---
-*.bak
-*.tmp
-
-# --- Environment variables ---
+# --- Environment Variables & Secrets ---
 .env
 .env.local
 .env.*.local
