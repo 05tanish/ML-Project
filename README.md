@@ -29,16 +29,13 @@ An end-to-end machine learning system and interactive Streamlit web dashboard fo
 Ml-project/
 ├── app.py                           # Production Streamlit application
 ├── api/
-│   ├── index.py                     # Vercel Serverless Function & REST API entrypoint
 │   ├── best_phishing_model.pkl      # Pre-trained Random Forest model artifact
-│   ├── phishing_scaler.pkl          # Fitted StandardScaler artifact
-│   └── requirements.txt             # Minimal dependencies for Vercel backend
+│   └── phishing_scaler.pkl          # Fitted StandardScaler artifact
 ├── phishing_website_raw.csv         # Structured dataset (25,000 samples, 20 features)
 ├── phishing_classification.ipynb    # Core research and EDA notebook
 ├── Final_Report.docx                # Complete project documentation report
 ├── Project_Documentation.md         # Detailed notebook, feature, and model docs
 ├── requirements.txt                 # Full Python dependencies (for Streamlit/Docker)
-├── vercel.json & .vercelignore      # Vercel deployment configuration
 ├── Dockerfile & .dockerignore       # Production container definition
 ├── Procfile                         # PaaS deployment configuration (Render/Heroku)
 └── README.md                        # Documentation & deployment guide
@@ -48,17 +45,7 @@ Ml-project/
 
 ## 🚀 Deployment Guide
 
-### Option 1: Vercel (Recommended for Serverless API & Web UI)
-
-1. Push your repository to GitHub.
-2. Go to [Vercel](https://vercel.com/) and click **"Add New Project"**.
-3. Import your `ML-Project` repository.
-4. Leave the Framework Preset as **Other** and the Root Directory as `./`.
-5. Click **"Deploy"**. Vercel will automatically detect `vercel.json` and deploy the blazing-fast serverless API!
-
----
-
-### Option 2: Streamlit Community Cloud (For Full 7-Tab Dashboard)
+### Option 1: Streamlit Community Cloud (Recommended — 100% Free & 1-Click)
 
 1. Push your repository to GitHub.
 2. Go to [share.streamlit.io](https://share.streamlit.io).

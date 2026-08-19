@@ -1,7 +1,0 @@
-# Ignore root requirements.txt so Vercel uses api/requirements.txt instead
-# This avoids the 500MB serverless bundle limit caused by Streamlit & Pandas
-requirements.txt
-Dockerfile
-.dockerignore
-phishing_classification.ipynb
-Final_Report.docx
